@@ -1,6 +1,6 @@
 //
 //  AppModel.swift
-//  HumanroidRenderer
+//  HumanoidRenderer
 //
 //  Created by 张艺怀 on 2025/11/27.
 //
