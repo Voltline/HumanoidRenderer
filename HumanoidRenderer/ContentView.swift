@@ -17,7 +17,7 @@ struct ContentView: View {
                 .padding(.bottom, 50)
 
             Text("Hello, world!")
-
+            Text("Hello, Humanoid Renderer!")
             ToggleImmersiveSpaceButton()
         }
         .padding()
