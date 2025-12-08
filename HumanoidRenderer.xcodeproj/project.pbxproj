@@ -8,11 +8,13 @@
 
 /* Begin PBXBuildFile section */
 		B242954D2ED832AE00A23D6D /* RealityKitContent in Frameworks */ = {isa = PBXBuildFile; productRef = B242954C2ED832AE00A23D6D /* RealityKitContent */; };
+		B2723EBF2EE6D20E00C5EFBC /* ARKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B2723EBE2EE6D20E00C5EFBC /* ARKit.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		B24295472ED832AE00A23D6D /* HumanoidRenderer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HumanoidRenderer.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B242954B2ED832AE00A23D6D /* RealityKitContent */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = RealityKitContent; sourceTree = "<group>"; };
+		B2723EBE2EE6D20E00C5EFBC /* ARKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ARKit.framework; path = System/Library/Frameworks/ARKit.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -41,6 +43,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B2723EBF2EE6D20E00C5EFBC /* ARKit.framework in Frameworks */,
 				B242954D2ED832AE00A23D6D /* RealityKitContent in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -53,6 +56,7 @@
 			children = (
 				B24295492ED832AE00A23D6D /* HumanoidRenderer */,
 				B242954A2ED832AE00A23D6D /* Packages */,
+				B2723EBD2EE6D20E00C5EFBC /* Frameworks */,
 				B24295482ED832AE00A23D6D /* Products */,
 			);
 			sourceTree = "<group>";
@@ -71,6 +75,14 @@
 				B242954B2ED832AE00A23D6D /* RealityKitContent */,
 			);
 			path = Packages;
+			sourceTree = "<group>";
+		};
+		B2723EBD2EE6D20E00C5EFBC /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				B2723EBE2EE6D20E00C5EFBC /* ARKit.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */

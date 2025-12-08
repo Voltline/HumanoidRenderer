@@ -31,10 +31,10 @@ def Xform "Root"
         rel material:binding = </Root/GridMaterial/GridMaterial> (
             bindMaterialAs = "weakerThanDescendants"
         )
-        double radius = 0.1
+        double radius = 0.2
         quatf xformOp:orient = (1, 0, 0, 0)
         float3 xformOp:scale = (1, 1, 1)
-        float3 xformOp:translate = (-0.5, 1.5, -1.5)
+        float3 xformOp:translate = (0.08475067, 1.5276326, -1.5)
         uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
     }
 

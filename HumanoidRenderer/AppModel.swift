@@ -2,7 +2,7 @@
 //  AppModel.swift
 //  HumanoidRenderer
 //
-//  Created by 张艺怀 on 2025/11/27.
+//  Created by Voltline on 2025/11/27.
 //
 
 import SwiftUI
