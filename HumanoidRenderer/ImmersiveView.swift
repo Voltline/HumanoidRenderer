@@ -55,7 +55,7 @@ struct ImmersiveView: View {
                 var lastSampleTime = Date()
                 _ = content.subscribe(to: SceneEvents.Update.self) { event in
                     let now = Date()
-                    if now.timeIntervalSince(lastSampleTime) < 0.2 {  // 每 0.1 秒一次（10Hz）
+                    if now.timeIntervalSince(lastSampleTime) < 0.02 {  // 每 0.1 秒一次（10Hz）
                         return
                     }
                     lastSampleTime = now
@@ -67,12 +67,12 @@ struct ImmersiveView: View {
                                                transform.columns.3.z)
                         let quat = simd_quatf(transform)
                         let euler = quat.toEulerAngles()
-
-                        print("""
-                        head pos: \(pos)
-                        quat: \(quat)
-                        euler (rad): \(euler)
-                        """)
+                        await uploadPose(pos: pos, quat: quat)
+//                        print("""
+//                        head pos: \(pos)
+//                        quat: \(quat)
+//                        euler (rad): \(euler)
+//                        """)
                     }
                 }
                 
@@ -84,6 +84,25 @@ struct ImmersiveView: View {
             .task {
                 await HeadTracker.shared.startTracking()
             }
+        }
+    }
+    
+    func uploadPose(pos: SIMD3<Float>, quat: simd_quatf) async {
+        let url = URL(string: "http://192.168.31.232:30000/pose")!   // 别用 localhost！！
+        
+        if !(pos.x == pos.y && pos.y == pos.z && pos.z == 0) {
+            let payload: [String: Any] = [
+                "timestamp": Date().timeIntervalSince1970,
+                "position": [pos.x, pos.y, pos.z],
+                "quaternion": [quat.vector.x, quat.vector.y, quat.vector.z, quat.vector.w]
+            ]
+
+            var req = URLRequest(url: url)
+            req.httpMethod = "POST"
+            req.addValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = try! JSONSerialization.data(withJSONObject: payload)
+
+            let _ = try? await URLSession.shared.data(for: req)
         }
     }
 }
