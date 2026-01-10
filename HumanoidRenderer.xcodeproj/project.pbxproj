@@ -7,7 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		B242954D2ED832AE00A23D6D /* RealityKitContent in Frameworks */ = {isa = PBXBuildFile; productRef = B242954C2ED832AE00A23D6D /* RealityKitContent */; };
+		B200EB652F0F941D0097D0D6 /* RealityKitContent in Frameworks */ = {isa = PBXBuildFile; productRef = B200EB642F0F941D0097D0D6 /* RealityKitContent */; };
+		B200EBA72F0FB0E30097D0D6 /* LiveKit in Frameworks */ = {isa = PBXBuildFile; productRef = B200EBA62F0FB0E30097D0D6 /* LiveKit */; };
 		B2723EBF2EE6D20E00C5EFBC /* ARKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B2723EBE2EE6D20E00C5EFBC /* ARKit.framework */; };
 /* End PBXBuildFile section */
 
@@ -43,8 +44,9 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B200EBA72F0FB0E30097D0D6 /* LiveKit in Frameworks */,
 				B2723EBF2EE6D20E00C5EFBC /* ARKit.framework in Frameworks */,
-				B242954D2ED832AE00A23D6D /* RealityKitContent in Frameworks */,
+				B200EB652F0F941D0097D0D6 /* RealityKitContent in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -105,7 +107,8 @@
 			);
 			name = HumanoidRenderer;
 			packageProductDependencies = (
-				B242954C2ED832AE00A23D6D /* RealityKitContent */,
+				B200EB642F0F941D0097D0D6 /* RealityKitContent */,
+				B200EBA62F0FB0E30097D0D6 /* LiveKit */,
 			);
 			productName = HumanroidRenderer;
 			productReference = B24295472ED832AE00A23D6D /* HumanoidRenderer.app */;
@@ -123,18 +126,23 @@
 				TargetAttributes = {
 					B24295462ED832AE00A23D6D = {
 						CreatedOnToolsVersion = 26.2;
+						LastSwiftMigration = 2620;
 					};
 				};
 			};
 			buildConfigurationList = B24295422ED832AE00A23D6D /* Build configuration list for PBXProject "HumanoidRenderer" */;
-			developmentRegion = en;
+			developmentRegion = "zh-Hans";
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
 				Base,
+				"zh-Hans",
 			);
 			mainGroup = B242953E2ED832AE00A23D6D;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				B200EBA52F0FB0E30097D0D6 /* XCRemoteSwiftPackageReference "client-sdk-swift" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = B24295482ED832AE00A23D6D /* Products */;
 			projectDirPath = "";
@@ -171,13 +179,15 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
+				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 8R5Q4A3RC7;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "$(TARGET_NAME)/Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = HumanoidRenderer;
+				INFOPLIST_KEY_CFBundleDisplayName = EERenderer;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -190,6 +200,8 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 7;
@@ -202,13 +214,15 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
+				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 8R5Q4A3RC7;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "$(TARGET_NAME)/Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = HumanoidRenderer;
+				INFOPLIST_KEY_CFBundleDisplayName = EERenderer;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -221,6 +235,7 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 7;
@@ -372,10 +387,26 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCRemoteSwiftPackageReference section */
+		B200EBA52F0FB0E30097D0D6 /* XCRemoteSwiftPackageReference "client-sdk-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/livekit/client-sdk-swift.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.10.2;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
-		B242954C2ED832AE00A23D6D /* RealityKitContent */ = {
+		B200EB642F0F941D0097D0D6 /* RealityKitContent */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = RealityKitContent;
+		};
+		B200EBA62F0FB0E30097D0D6 /* LiveKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B200EBA52F0FB0E30097D0D6 /* XCRemoteSwiftPackageReference "client-sdk-swift" */;
+			productName = LiveKit;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

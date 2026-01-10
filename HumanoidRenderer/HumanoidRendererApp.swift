@@ -10,11 +10,19 @@ import SwiftUI
 @main
 struct HumanroidRendererApp: App {
     @State private var appModel = AppModel()
+    @StateObject private var liveKitVM: LiveKitViewModel
+    
+    init() {
+        let model = AppModel()
+        _appModel = State(wrappedValue: model)
+        _liveKitVM = StateObject(wrappedValue: LiveKitViewModel(appModel: model))
+    }
 
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environment(appModel)
+                .environmentObject(liveKitVM)
         }
 
         ImmersiveSpace(id: appModel.immersiveSpaceID) {

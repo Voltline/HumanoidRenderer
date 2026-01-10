@@ -6,6 +6,8 @@
 //
 
 import SwiftUI
+import LiveKit
+internal import Combine
 
 /// Maintains app-wide state
 @MainActor
@@ -18,4 +20,5 @@ class AppModel {
         case open
     }
     var immersiveSpaceState = ImmersiveSpaceState.closed
+    var remoteVideoTrack: VideoTrack?
 }

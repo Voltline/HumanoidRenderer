@@ -49,7 +49,8 @@ struct ToggleImmersiveSpaceButton: View {
                 }
             }
         } label: {
-            Text(appModel.immersiveSpaceState == .open ? "Hide Immersive Space" : "Show Immersive Space")
+            Text(appModel.immersiveSpaceState == .open ? "退出沉浸式场景" : "进入沉浸式场景")
+                .foregroundStyle(appModel.immersiveSpaceState == .open ? Color.red : Color.green)
         }
         .disabled(appModel.immersiveSpaceState == .inTransition)
         .animation(.none, value: 0)

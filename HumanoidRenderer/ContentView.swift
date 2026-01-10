@@ -8,23 +8,29 @@
 import SwiftUI
 import RealityKit
 import RealityKitContent
+import LiveKit
 
 struct ContentView: View {
-
+    @EnvironmentObject private var liveKitVM: LiveKitViewModel
     var body: some View {
         VStack {
             Model3D(named: "Scene", bundle: realityKitContentBundle)
                 .padding(.bottom, 50)
 
-            Text("Hello, world!")
-            Text("Hello, Humanoid Renderer!")
+            Text("欢迎来到EERenderer")
             ToggleImmersiveSpaceButton()
+        }
+        .task {
+            liveKitVM.connect()
         }
         .padding()
     }
 }
 
-#Preview(windowStyle: .automatic) {
+#Preview {
+    let appModel = AppModel()
+    var liveKitVM = LiveKitViewModel(appModel: appModel)
     ContentView()
-        .environment(AppModel())
+        .environment(appModel)
+        .environmentObject(liveKitVM)
 }
