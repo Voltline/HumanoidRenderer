@@ -20,6 +20,10 @@ struct ImmersiveView: View {
     
     @State private var boundTrack: VideoTrack?
     
+    @State private var lastYaw: Float = 0.0
+    @State private var lastPitch: Float = 0.0
+    @State private var hasBaseline: Bool = false
+    
     var body: some View {
         RealityView { content in
             /// MARK: 背景球
@@ -49,7 +53,7 @@ struct ImmersiveView: View {
             var lastSampleTime = Date()
             _ = content.subscribe(to: SceneEvents.Update.self) { event in
                 let now = Date()
-                if now.timeIntervalSince(lastSampleTime) < 0.02 {  // 每 0.02 秒一次（50Hz）
+                if now.timeIntervalSince(lastSampleTime) < 0.05 {  // 每 0.05 秒一次（20Hz）
                     return
                 }
                 lastSampleTime = now
@@ -76,6 +80,9 @@ struct ImmersiveView: View {
                 patch.model?.materials = [m]
             }
         }
+        .onAppear {
+            headPosTranferInit()
+        }
         .onDisappear {
             if let old = boundTrack {
                 old.remove(videoRenderer: bridge)
@@ -95,7 +102,29 @@ struct ImmersiveView: View {
                                    transform.columns.3.z)
             let quat = simd_quatf(transform)
             let euler = quat.toEulerAngles()
-            await uploadPose(pos: pos, quat: quat)
+            if !hasBaseline {
+                self.lastYaw = euler.y
+                self.lastPitch = euler.x
+                self.hasBaseline = true
+                return
+            }
+            
+            let deltaYaw = euler.y - self.lastYaw
+            let deltaPitch = euler.x - self.lastPitch
+            
+            self.lastYaw = euler.y
+            self.lastPitch = euler.x
+            await uploadDelta(delta_yaw: deltaYaw, delta_pitch: -deltaPitch)
+        }
+    }
+    private func headPosTranferInit() {
+        Task {
+            let url = URL(string: "http://192.168.31.134:30000/init")!
+
+            var req = URLRequest(url: url)
+            req.httpMethod = "GET"
+
+            let _ = try? await URLSession.shared.data(for: req)
         }
     }
 }

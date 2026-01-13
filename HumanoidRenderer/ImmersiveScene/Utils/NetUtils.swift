@@ -26,3 +26,18 @@ func uploadPose(pos: SIMD3<Float>, quat: simd_quatf) async {
         let _ = try? await URLSession.shared.data(for: req)
     }
 }
+
+func uploadDelta(delta_yaw: Float, delta_pitch: Float) async {
+    let url = URL(string: "http://192.168.31.134:30000/gimbal/delta")!   // 别用 localhost！！
+    let payload: [String: Any] = [
+        "delta_yaw": delta_yaw,
+        "delta_pitch": delta_pitch
+    ]
+
+    var req = URLRequest(url: url)
+    req.httpMethod = "POST"
+    req.addValue("application/json", forHTTPHeaderField: "Content-Type")
+    req.httpBody = try! JSONSerialization.data(withJSONObject: payload)
+
+    let _ = try? await URLSession.shared.data(for: req)
+}
