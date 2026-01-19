@@ -9,7 +9,6 @@ import SwiftUI
 import LiveKit
 internal import Combine
 
-private let LIVEKIT_WS_URL = "ws://192.168.31.134:7880"
 private let API_KEY = "devkey"
 private let API_SECRET = "secret"
 private let ROOM = "my-room"
@@ -26,7 +25,7 @@ final class LiveKitViewModel: ObservableObject {
         self.appModel = appModel
     }
 
-    func connect() {
+    func connect(serverIP: String) {
         statusText = "Connecting…"
         room.add(delegate: self)
 
@@ -34,7 +33,7 @@ final class LiveKitViewModel: ObservableObject {
             do {
                 // 生成此次访问用到的JWT
                 let token = try LiveKitToken.make(apiKey: API_KEY, apiSecret: API_SECRET, room: ROOM, identity: "vision-pro-viewer", name: "vision-pro-viewer", ttlSeconds: 24 * 60 * 60)
-                try await room.connect(url: LIVEKIT_WS_URL, token: token)
+                try await room.connect(url: "ws://\(serverIP):7880", token: token)
                 statusText = "Connected. Waiting for remote video…"
             } catch {
                 statusText = "Connect failed: \(error)"

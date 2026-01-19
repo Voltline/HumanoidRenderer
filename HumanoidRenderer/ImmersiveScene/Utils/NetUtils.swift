@@ -8,8 +8,8 @@
 import ARKit
 import Foundation
 
-func uploadPose(pos: SIMD3<Float>, quat: simd_quatf) async {
-    let url = URL(string: "http://192.168.31.232:30000/pose")!   // 别用 localhost！！
+func uploadPose(pos: SIMD3<Float>, quat: simd_quatf, serverIP: String) async {
+    let url = URL(string: "http://\(serverIP):30000/pose")!   // 别用 localhost！！
     
     if !(pos.x == pos.y && pos.y == pos.z && pos.z == 0) {
         let payload: [String: Any] = [
@@ -27,8 +27,8 @@ func uploadPose(pos: SIMD3<Float>, quat: simd_quatf) async {
     }
 }
 
-func uploadDelta(delta_yaw: Float, delta_pitch: Float) async {
-    let url = URL(string: "http://192.168.31.134:30000/gimbal/delta")!   // 别用 localhost！！
+func uploadDelta(delta_yaw: Float, delta_pitch: Float, serverIP: String) async {
+    let url = URL(string: "http://\(serverIP):30000/gimbal/delta")!   // 别用 localhost！！
     let payload: [String: Any] = [
         "delta_yaw": delta_yaw,
         "delta_pitch": delta_pitch

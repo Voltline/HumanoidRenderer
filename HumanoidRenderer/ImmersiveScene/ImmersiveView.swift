@@ -24,6 +24,8 @@ struct ImmersiveView: View {
     @State private var lastPitch: Float = 0.0
     @State private var hasBaseline: Bool = false
     
+    @AppStorage("serverIP") private var serverIP: String = "192.168.31.247"
+    
     var body: some View {
         RealityView { content in
             /// MARK: 背景球
@@ -114,12 +116,12 @@ struct ImmersiveView: View {
             
             self.lastYaw = euler.y
             self.lastPitch = euler.x
-            await uploadDelta(delta_yaw: deltaYaw, delta_pitch: -deltaPitch)
+            await uploadDelta(delta_yaw: deltaYaw, delta_pitch: -deltaPitch, serverIP: serverIP)
         }
     }
     private func headPosTranferInit() {
         Task {
-            let url = URL(string: "http://192.168.31.134:30000/init")!
+            let url = URL(string: "http://\(serverIP):30000/init")!
 
             var req = URLRequest(url: url)
             req.httpMethod = "GET"
