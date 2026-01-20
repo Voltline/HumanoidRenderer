@@ -58,9 +58,11 @@ extension LiveKitViewModel: RoomDelegate {
     // 关键：订阅回调用 publication，然后从 publication.track 取真正 Track
     func room(_ room: Room, participant: RemoteParticipant, didSubscribeTrack publication: RemoteTrackPublication) {
         if let video = publication.track as? VideoTrack {
-            remoteVideoTrack = video
-            statusText = "Subscribed video: \(publication.name)"
-            appModel.remoteVideoTrack = video
+            Task { @MainActor in
+                remoteVideoTrack = video
+                statusText = "Subscribed video: \(publication.name)"
+                appModel.remoteVideoTrack = video
+            }
         }
     }
 

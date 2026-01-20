@@ -7,7 +7,7 @@
 
 def Xform "Root"
 {
-    reorder nameChildren = ["Sphere_Left", "Sphere_Right", "GridMaterial"]
+    reorder nameChildren = ["Sphere_Left", "Sphere_Right", "StereoVideoMaterial", "GridMaterial"]
     def Sphere "Sphere_Right" (
         active = true
         prepend apiSchemas = ["MaterialBindingAPI"]
@@ -38,13 +38,79 @@ def Xform "Root"
         uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
     }
 
-    def "GridMaterial" (
-        active = true
-        prepend references = @Materials/GridMaterial.usda@
-    )
+    def Material "StereoVideoMaterial"
     {
-        float3 xformOp:scale = (1, 1, 1)
-        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+        asset inputs:LeftImage (
+            customData = {
+                dictionary realitykit = {
+                    float2 positionInSubgraph = (-327.25, -62)
+                    int stackingOrderInSubgraph = 297
+                }
+            }
+        )
+        asset inputs:RightImage (
+            customData = {
+                dictionary realitykit = {
+                    float2 positionInSubgraph = (-338.25, 169)
+                    int stackingOrderInSubgraph = 175
+                }
+            }
+        )
+        token outputs:mtlx:surface.connect = </Root/StereoVideoMaterial/UnlitSurface.outputs:out>
+        token outputs:realitykit:vertex
+        float2 ui:nodegraph:realitykit:subgraphOutputs:pos = (671.25, 107.5)
+        int ui:nodegraph:realitykit:subgraphOutputs:stackingOrder = 165
+
+        def Shader "UnlitSurface"
+        {
+            uniform token info:id = "ND_realitykit_unlit_surfaceshader"
+            bool inputs:applyPostProcessToneMap = 0
+            color3f inputs:color.connect = </Root/StereoVideoMaterial/Combine.outputs:out>
+            bool inputs:hasPremultipliedAlpha
+            float inputs:opacity
+            float inputs:opacityThreshold
+            token outputs:out
+            float2 ui:nodegraph:node:pos = (414.25, 99)
+            int ui:nodegraph:node:stackingOrder = 171
+        }
+
+        def Shader "Combine"
+        {
+            uniform token info:id = "ND_realitykit_geometry_switch_cameraindex_color3"
+            color3f inputs:left.connect = </Root/StereoVideoMaterial/Left.outputs:out>
+            color3f inputs:mono.connect = </Root/StereoVideoMaterial/Right.outputs:out>
+            color3f inputs:right.connect = </Root/StereoVideoMaterial/Right.outputs:out>
+            color3f outputs:out
+            float2 ui:nodegraph:node:pos = (148.25, 118)
+            int ui:nodegraph:node:stackingOrder = 292
+        }
+
+        def Shader "Left"
+        {
+            uniform token info:id = "ND_image_color3"
+            color3f inputs:default
+            asset inputs:file.connect = </Root/StereoVideoMaterial.inputs:LeftImage>
+            string inputs:filtertype
+            float2 inputs:texcoord
+            color3f outputs:out
+            float2 ui:nodegraph:node:pos = (-95.75, -30)
+            int ui:nodegraph:node:stackingOrder = 194
+            string[] ui:nodegraph:realitykit:node:attributesShowingChildren = ["inputs:vaddressmode"]
+        }
+
+        def Shader "Right"
+        {
+            uniform token info:id = "ND_image_color3"
+            color3f inputs:default
+            asset inputs:file.connect = </Root/StereoVideoMaterial.inputs:RightImage>
+            string inputs:filtertype
+            float2 inputs:texcoord
+            string inputs:vaddressmode
+            color3f outputs:out
+            float2 ui:nodegraph:node:pos = (-100.75, 199)
+            int ui:nodegraph:node:stackingOrder = 175
+            string[] ui:nodegraph:realitykit:node:attributesShowingChildren = ["inputs:file"]
+        }
     }
 }
 

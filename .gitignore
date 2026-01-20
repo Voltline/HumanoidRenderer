@@ -1,0 +1,27 @@
+Packages/RealityKitContent/.build/*
+
+# --- Reality Composer Pro ---
+# 忽略个人工作区配置
+*.rcuserdata
+
+# --- Xcode ---
+# 忽略用户特定的设置和状态
+xcuserdata/
+*.xcuserstate
+*.xcresult
+
+# --- macOS ---
+# 忽略系统生成的隐藏文件
+.DS_Store
+
+# --- Swift Package Manager ---
+# 如果你的 RealityKitContent 是以 Package 形式管理的，忽略构建缓存
+.build/
+.swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
+# 根据团队习惯，可以选择是否忽略 Package.resolved
+# Package.resolved
+
+# --- Swift / iOS / visionOS ---
+# 忽略构建产物
+build/
+DerivedData/
