@@ -70,8 +70,10 @@ extension LiveKitViewModel: RoomDelegate {
         if let current = remoteVideoTrack,
            let video = publication.track as? VideoTrack,
            video === current {
-            remoteVideoTrack = nil
-            statusText = "Video unsubscribed"
+            Task { @MainActor in
+                remoteVideoTrack = nil
+                statusText = "Video unsubscribed"
+            }
             appModel.remoteVideoTrack = video
         }
     }

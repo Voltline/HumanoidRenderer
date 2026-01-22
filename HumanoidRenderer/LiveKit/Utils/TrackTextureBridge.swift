@@ -12,107 +12,101 @@ import CoreVideo
 import RealityKit
 internal import Combine
 import AVFoundation
+import VideoToolbox
 
 @MainActor
 final class TrackTextureBridge: NSObject, ObservableObject, VideoRenderer {
-
     // MARK: - VideoRenderer required
-
     var isAdaptiveStreamEnabled: Bool = false
     var adaptiveStreamSize: CGSize = .zero
 
     // MARK: - Stereo output (REUSED textures)
-
     @Published private(set) var leftTexture: TextureResource?
     @Published private(set) var rightTexture: TextureResource?
 
     // MARK: - Internal state
-
-    private let ciContext = CIContext(options: [CIContextOption.useSoftwareRenderer: false])
-    private let colorSpace = CGColorSpaceCreateDeviceRGB()
     private var didLogFirstFrame = false
 
     // MARK: - LiveKit frame callback
-
-    func render(
+    /// 渲染回调，LiveKit 会在后台线程调用此方法
+    /// 使用 nonisolated 避免阻塞主线程（UI）
+    /// 使用 VideoToolbox 代替 CIContext 进行更加高效的图像转换
+    nonisolated func render(
         frame: VideoFrame,
         captureDevice: AVCaptureDevice?,
         captureOptions: VideoCaptureOptions?
     ) {
-        if !didLogFirstFrame {
-            didLogFirstFrame = true
-            print("[TrackTextureBridge] First frame arrived!")
-        }
-
-        // 1. 尝试获取 PixelBuffer
+        // 尝试获取 PixelBuffer
         guard let pixelBuffer = frame.toCVPixelBuffer() else {
-            print("[TrackTextureBridge] Error: Failed to convert VideoFrame to CVPixelBuffer")
             return
         }
 
-        // 2. 切分画面
-        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
-        let fullRect = ciImage.extent
-        let halfHeight = fullRect.height / 2.0
-
-        // Top -> Left Eye, Bottom -> Right Eye
-        let topRect = CGRect(
-            x: fullRect.origin.x,
-            y: fullRect.origin.y + halfHeight,
-            width: fullRect.width,
-            height: halfHeight
-        )
-        let bottomRect = CGRect(
-            x: fullRect.origin.x,
-            y: fullRect.origin.y,
-            width: fullRect.width,
-            height: halfHeight
-        )
-
-        let leftCI = ciImage.cropped(to: topRect)
-        let rightCI = ciImage.cropped(to: bottomRect)
-
-        // 3. 将耗时的 CGImage 创建放在非主线程处理，避免渲染掉帧
-        // 注意：ciContext 是线程安全的
-        guard let leftCG = ciContext.createCGImage(leftCI, from: leftCI.extent, format: .RGBA8, colorSpace: colorSpace),
-              let rightCG = ciContext.createCGImage(rightCI, from: rightCI.extent, format: .RGBA8, colorSpace: colorSpace) else {
-            print("[TrackTextureBridge] Error: Failed to create CGImages from cropped CIImages")
+        // 使用 VideoToolbox 高效转换 CVPixelBuffer -> CGImage
+        // 相比 CIContext，这通常更少涉及 GPU 回读，且开销更低
+        var cgImage: CGImage?
+        let status = VTCreateCGImageFromCVPixelBuffer(pixelBuffer, options: nil, imageOut: &cgImage)
+        
+        guard status == noErr, let fullImage = cgImage else {
+            print("[TrackTextureBridge] Error: VTCreateCGImageFromCVPixelBuffer failed with status \(status)")
             return
         }
 
-        // 4. 回到主线程更新 RealityKit 纹理资源
+        // 切分画面 (CGImage 裁剪操作是轻量级的元数据操作)
+        let width = fullImage.width
+        let height = fullImage.height
+        let halfHeight = height / 2
+
+        // 注意：CGImage 坐标系原点在左上角 (0,0)
+        // 假设输入视频是上下排列：上方是左眼，下方是右眼
+        // 左眼 (Top) -> Y: 0
+        // 右眼 (Bottom) -> Y: halfHeight
+        guard let leftCG = fullImage.cropping(to: CGRect(x: 0, y: 0, width: width, height: halfHeight)),
+              let rightCG = fullImage.cropping(to: CGRect(x: 0, y: halfHeight, width: width, height: halfHeight)) else {
+            print("[TrackTextureBridge] Error: Failed to crop CGImage")
+            return
+        }
+
+        // 回到主线程更新 RealityKit 纹理资源
         Task { @MainActor in
-            do {
-                // 处理左眼纹理
-                if self.leftTexture == nil {
-                    print("[TrackTextureBridge] Initializing Left TextureResource")
-                    self.leftTexture = try TextureResource(
-                        image: leftCG,
-                        options: .init(semantic: .color)
-                    )
-                } else {
-                    try self.leftTexture?.replace(
-                        withImage: leftCG,
-                        options: .init(semantic: .color)
-                    )
-                }
-
-                // 处理右眼纹理
-                if self.rightTexture == nil {
-                    print("[TrackTextureBridge] Initializing Right TextureResource")
-                    self.rightTexture = try TextureResource(
-                        image: rightCG,
-                        options: .init(semantic: .color)
-                    )
-                } else {
-                    try self.rightTexture?.replace(
-                        withImage: rightCG,
-                        options: .init(semantic: .color)
-                    )
-                }
-            } catch {
-                print("[TrackTextureBridge] Critical: TextureResource update failed: \(error)")
+            if !self.didLogFirstFrame {
+                self.didLogFirstFrame = true
+                print("[TrackTextureBridge] First frame arrived and processed via VideoToolbox!")
             }
+            self.updateTextures(leftCG: leftCG, rightCG: rightCG)
+        }
+    }
+    
+    private func updateTextures(leftCG: CGImage, rightCG: CGImage) {
+        do {
+            // 处理左眼纹理
+            if self.leftTexture == nil {
+                // print("[TrackTextureBridge] Initializing Left TextureResource")
+                self.leftTexture = try TextureResource(
+                    image: leftCG,
+                    options: .init(semantic: .color)
+                )
+            } else {
+                try self.leftTexture?.replace(
+                    withImage: leftCG,
+                    options: .init(semantic: .color)
+                )
+            }
+
+            // 处理右眼纹理
+            if self.rightTexture == nil {
+                // print("[TrackTextureBridge] Initializing Right TextureResource")
+                self.rightTexture = try TextureResource(
+                    image: rightCG,
+                    options: .init(semantic: .color)
+                )
+            } else {
+                try self.rightTexture?.replace(
+                    withImage: rightCG,
+                    options: .init(semantic: .color)
+                )
+            }
+        } catch {
+            print("[TrackTextureBridge] Critical: TextureResource update failed: \(error)")
         }
     }
 }
