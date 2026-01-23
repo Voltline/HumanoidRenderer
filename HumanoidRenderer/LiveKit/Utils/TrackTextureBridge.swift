@@ -53,7 +53,7 @@ final class TrackTextureBridge: NSObject, ObservableObject, VideoRenderer {
         // 初始化 LowLevelTexture
         let desc = LowLevelTexture.Descriptor(
             textureType: .type2D,
-            pixelFormat: .bgra8Unorm,
+            pixelFormat: .bgra8Unorm_srgb,
             width: 1920,
             height: 1080,
             textureUsage: [.shaderRead, .shaderWrite]
@@ -116,7 +116,6 @@ final class TrackTextureBridge: NSObject, ObservableObject, VideoRenderer {
         
         let width = 1920
         let height = 2160
-        let halfHeight = UInt32(height / 2) // 半高度分割左右眼画面
         
         // 映射 Y 和 UV 纹理
         guard let yTexture = makeTexture(from: pixelBuffer, planeIndex: 0, pixelFormat: .r8Unorm),
@@ -129,12 +128,14 @@ final class TrackTextureBridge: NSObject, ObservableObject, VideoRenderer {
         
         // 处理左眼
         if let encoder = commandBuffer.makeComputeCommandEncoder() {
-            var offset: UInt32 = 0
             encoder.setComputePipelineState(pipelineState)
             encoder.setTexture(yTexture, index: 0)
             encoder.setTexture(uvTexture, index: 1)
             encoder.setTexture(leftLowLevel.read(), index: 2) // 写入左眼
-            encoder.setBytes(&offset, length: MemoryLayout<UInt32>.size, index: 0)
+            
+            // 传入归一化偏移量
+            var normOffset: Float = 0.0
+            encoder.setBytes(&normOffset, length: MemoryLayout<UInt32>.size, index: 0)
             
             dispatch(encoder: encoder, targetTexture: leftLowLevel.read())
             encoder.endEncoding()
@@ -142,12 +143,12 @@ final class TrackTextureBridge: NSObject, ObservableObject, VideoRenderer {
         
         // 处理右眼
         if let encoder = commandBuffer.makeComputeCommandEncoder() {
-            var offset: UInt32 = halfHeight
             encoder.setComputePipelineState(pipelineState)
             encoder.setTexture(yTexture, index: 0)
             encoder.setTexture(uvTexture, index: 1)
             encoder.setTexture(rightLowLevel.read(), index: 2) // 写入右眼
-            encoder.setBytes(&offset, length: MemoryLayout<UInt32>.size, index: 0)
+            var normOffset: Float = 0.5
+            encoder.setBytes(&normOffset, length: MemoryLayout<UInt32>.size, index: 0)
             
             dispatch(encoder: encoder, targetTexture: rightLowLevel.read())
             encoder.endEncoding()

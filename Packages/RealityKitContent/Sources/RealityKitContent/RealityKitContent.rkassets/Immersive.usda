@@ -103,7 +103,7 @@ def Xform "Root"
         {
             uniform token info:id = "ND_realitykit_unlit_surfaceshader"
             bool inputs:applyPostProcessToneMap
-            color3f inputs:color.connect = </Root/StereoVideoMaterial/Power.outputs:out>
+            color3f inputs:color.connect = </Root/StereoVideoMaterial/Combine.outputs:out>
             bool inputs:hasPremultipliedAlpha
             float inputs:opacity
             float inputs:opacityThreshold
@@ -119,7 +119,7 @@ def Xform "Root"
             float inputs:in2 = 1.6
             color3f outputs:out
             float2 ui:nodegraph:node:pos = (249.375, 282.72266)
-            int ui:nodegraph:node:stackingOrder = 392
+            int ui:nodegraph:node:stackingOrder = 393
         }
     }
 }
