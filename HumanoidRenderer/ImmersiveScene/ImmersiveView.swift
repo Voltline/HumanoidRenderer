@@ -30,7 +30,7 @@ struct ImmersiveView: View {
     var body: some View {
         RealityView { content in
             // MARK: - Background sphere
-            var bgMat = UnlitMaterial(color: .white)
+            var bgMat = UnlitMaterial(color: .black)
             bgMat.faceCulling = .none
             let backSphere = ModelEntity(
                 mesh: .generateSphere(radius: 30),
@@ -65,14 +65,24 @@ struct ImmersiveView: View {
                         var finalMat = mat
                         finalMat.faceCulling = .none
                         
-                        // 初始赋值
-                        patch.model?.materials = [finalMat]
-                        self.stereoMaterial = finalMat
-                        
-                        print("[RealityKit] StereoVideoMaterial loaded successfully!")
+                        // 进行唯一一次材质绑定
+                        do {
+                            // 直接使用 bridge 中的左右眼材质引用
+                            try finalMat.setParameter(name: "LeftImage", value: .textureResource(bridge.leftTexture))
+                            try finalMat.setParameter(name: "RightImage", value: .textureResource(bridge.rightTexture))
+                            
+                            // 把材质赋给 Entity
+                            if var model = patch.model {
+                                model.materials = [finalMat]
+                                patch.model = model
+                            }
+                            self.stereoMaterial = finalMat
+                            print("[RealityKit] LowLevelTexture bound to Material once.")
+                        } catch {
+                            print("[RealityKit] Initial Binding failed: \(error)")
+                        }
                     }
                 } catch {
-                    // 如果这里报错，控制台会立刻告诉你原因（比如路径不对）
                     print("[RealityKit] Failed to load material: \(error)")
                 }
             }
@@ -100,30 +110,6 @@ struct ImmersiveView: View {
                 Task { @MainActor in
                     boundTrack = newTrack
                 }
-            }
-
-            // MARK: - Stereo texture parameter
-            guard
-                let left = bridge.leftTexture,
-                let right = bridge.rightTexture,
-                var mat = stereoMaterial
-            else {
-                print("left and right texture Guard failed!")
-                return
-            }
-            
-            do {
-                try mat.setParameter(name: "LeftImage", value: .textureResource(left))
-                try mat.setParameter(name: "RightImage", value: .textureResource(right))
-                if var model = patchEntity?.components[ModelComponent.self] as? ModelComponent {
-                    model.materials = [mat]
-                    patchEntity?.components[ModelComponent.self] = model
-                    
-                    print("@State stereoMaterial update!")
-                    Task { @MainActor in self.stereoMaterial = mat }
-                }
-            } catch {
-                print("Material update failed: \(error)")
             }
         }
         .onAppear {
