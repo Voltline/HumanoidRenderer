@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import CompositorServices
 
 @main
 struct HumanroidRendererApp: App {
@@ -25,6 +26,7 @@ struct HumanroidRendererApp: App {
                 .environmentObject(liveKitVM)
         }
 
+        // MARK: - 方案 A: 全景球 (RealityKit)
         ImmersiveSpace(id: appModel.immersiveSpaceID) {
             ImmersiveView()
                 .environment(appModel)
@@ -34,6 +36,19 @@ struct HumanroidRendererApp: App {
                 .onDisappear {
                     appModel.immersiveSpaceState = .closed
                 }
+        }
+        .immersionStyle(selection: .constant(.full), in: .full)
+        
+        // MARK: - 方案 B: 3D Gaussian Splatting (CompositorServices)
+        ImmersiveSpace(id: appModel.gaussianSplatSpaceID) {
+            CompositorLayer(configuration: ContentStageConfiguration()) { layerRenderer in
+                GaussianSplatRenderer.startRendering(
+                    layerRenderer,
+                    splatURL: self.appModel.splatFileURL,
+                    appModel: self.appModel,
+                    serverIP: UserDefaults.standard.string(forKey: "serverIP") ?? "localhost"
+                )
+            }
         }
         .immersionStyle(selection: .constant(.full), in: .full)
     }

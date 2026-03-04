@@ -21,18 +21,24 @@ struct ToggleImmersiveSpaceButton: View {
                     case .open:
                         appModel.immersiveSpaceState = .inTransition
                         await dismissImmersiveSpace()
-                        // Don't set immersiveSpaceState to .closed because there
-                        // are multiple paths to ImmersiveView.onDisappear().
-                        // Only set .closed in ImmersiveView.onDisappear().
+                        // 对于 CompositorLayer (3DGS模式) 没有 .onDisappear 回调，
+                        // 需要在这里直接设置为 closed
+                        if appModel.renderingMode == .gaussianSplat {
+                            appModel.immersiveSpaceState = .closed
+                        }
+                        // RealityKit 模式的状态在 ImmersiveView.onDisappear() 中设置
 
                     case .closed:
                         appModel.immersiveSpaceState = .inTransition
                     appModel.phase = .idle
-                        switch await openImmersiveSpace(id: appModel.immersiveSpaceID) {
+                        switch await openImmersiveSpace(id: appModel.activeSpaceID) {
                             case .opened:
-                                // Don't set immersiveSpaceState to .open because there
-                                // may be multiple paths to ImmersiveView.onAppear().
-                                // Only set .open in ImmersiveView.onAppear().
+                                // 对于 CompositorLayer (3DGS模式) 没有 .onAppear 回调，
+                                // 需要在这里直接设置状态
+                                if appModel.renderingMode == .gaussianSplat {
+                                    appModel.immersiveSpaceState = .open
+                                }
+                                // RealityKit 模式的状态在 ImmersiveView.onAppear() 中设置
                                 break
 
                             case .userCancelled, .error:
