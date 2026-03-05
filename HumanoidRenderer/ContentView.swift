@@ -17,6 +17,8 @@ struct ContentView: View {
     @AppStorage("serverIP") private var serverIP: String = "localhost"
     @State private var showModifyServerIP: Bool = false
     @State private var showSplatFilePicker: Bool = false
+    @State private var showLogPanel: Bool = false
+    @State private var logRefreshTick: Int = 0
     var body: some View {
         VStack {
             Model3D(named: "Scene", bundle: realityKitContentBundle)
@@ -84,6 +86,16 @@ struct ContentView: View {
                         Text("修改服务器IP")
                     }
                     ToggleImmersiveSpaceButton()
+                    Button {
+                        showLogPanel.toggle()
+                    } label: {
+                        Text(showLogPanel ? "隐藏日志" : "查看日志")
+                    }
+                }
+                
+                // MARK: - 日志面板
+                if showLogPanel {
+                    LogPanelView(refreshTick: logRefreshTick)
                 }
             }
             .padding()
@@ -101,6 +113,8 @@ struct ContentView: View {
             if case .success(let urls) = result, let url = urls.first {
                 // 开始访问安全范围
                 if url.startAccessingSecurityScopedResource() {
+                    // 释放旧 URL 的安全范围访问
+                    appModel.splatFileURL?.stopAccessingSecurityScopedResource()
                     appModel.splatFileURL = url
                 }
             }
@@ -115,7 +129,63 @@ struct ContentView: View {
                 liveKitVM.disconnect()
             }
         }
+        .onAppear {
+            AppLogger.shared.onChange = { [self] in
+                logRefreshTick += 1
+            }
+        }
         .padding()
+    }
+}
+
+// MARK: - 日志面板
+struct LogPanelView: View {
+    let refreshTick: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("📋 应用日志")
+                    .font(.headline)
+                Spacer()
+                Button("清空") {
+                    AppLogger.shared.clear()
+                }
+                .font(.caption)
+            }
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 2) {
+                        ForEach(AppLogger.shared.entries) { entry in
+                            Text(entry.formatted)
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(colorFor(entry.level))
+                                .id(entry.id)
+                        }
+                    }
+                    .padding(.horizontal, 4)
+                }
+                .onChange(of: refreshTick) {
+                    if let last = AppLogger.shared.entries.last {
+                        proxy.scrollTo(last.id, anchor: .bottom)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 200)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .padding(.horizontal)
+    }
+
+    private func colorFor(_ level: AppLogger.Entry.Level) -> Color {
+        switch level {
+        case .info: return .primary
+        case .warn: return .yellow
+        case .error: return .red
+        case .perf: return .cyan
+        }
     }
 }
 

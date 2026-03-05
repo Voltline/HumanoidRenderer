@@ -73,29 +73,30 @@ struct ImmersiveView: View {
         do {
             // 第一步 云台复位
             appModel.phase = .initializing
+            AppLogger.shared.info("[全景球] 云台复位中...")
             try await gimbalClient?.initGimbal()
             
-            // 第二步 请求服务端扫描 (服务端现在返回的是 7x3 的图集 Atlas)
+            // 第二步 请求服务端扫描
             appModel.phase = .scanning
-            print("[Immersive View]: 请求服务端扫描全景图集...")
+            AppLogger.shared.info("[全景球] 请求服务端扫描全景图集...")
             
-            // 下载大图
             guard let panoData = try await gimbalClient?.fetchPanorama() else {
-                print("[Immersive View]: 获取全景图失败")
+                AppLogger.shared.error("[全景球] 获取全景图失败")
                 return
             }
+            AppLogger.shared.info("[全景球] 全景图下载完成 (\(panoData.count / 1024) KB)")
             
-            // 第三步 切片并应用纹理 (新方案)
+            // 第三步 切片并应用纹理
             appModel.phase = .baking
-            print("[Immersive View]: 正在切片并生成3D背景...")
+            AppLogger.shared.info("[全景球] 正在烘焙纹理...")
             
-            // 切换到主线程更新 UI
             await MainActor.run {
                 BackgroundManager.updatePanorama(imageData: panoData)
             }
             
-            // 第四步 云台归位 准备同步
+            // 第四步 云台归位
             appModel.phase = .ready
+            AppLogger.shared.info("[全景球] 云台归位...")
             try await gimbalClient?.initGimbal()
             
             // 第五步 开始实时跟随
@@ -103,9 +104,9 @@ struct ImmersiveView: View {
             appModel.phase = .live
             await HeadTracker.shared.startTracking()
             
-            print("[Immersive View]: 全链路流水线已完成，已进入实时跟随")
+            AppLogger.shared.info("[全景球] 已进入实时跟随模式")
         } catch {
-            print("[Immersive View]: 流水线出错：\(error)")
+            AppLogger.shared.error("[全景球] 流水线出错: \(error.localizedDescription)")
         }
     }
 

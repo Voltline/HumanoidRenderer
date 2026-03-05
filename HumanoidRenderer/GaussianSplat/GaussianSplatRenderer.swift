@@ -108,18 +108,30 @@ final class GaussianSplatRenderer: @unchecked Sendable {
         let renderer = GaussianSplatRenderer(layerRenderer, serverIP: serverIP)
         renderer.appModel = appModel
         
-        Task {
+        // 必须使用 Task.detached 断开 @MainActor 继承
+        // CompositorLayer 在 App.body 中构建，body 是 @MainActor，
+        // 普通 Task {} 会继承 @MainActor 导致加载和渲染调度
+        // 在主线程执行，阻塞 UI 交互
+        Task.detached(priority: .userInitiated) {
             // 加载 3DGS 场景
             if let url = splatURL {
                 do {
+                    await AppLogger.shared.info("[3DGS] 开始加载: \(url.lastPathComponent)")
+                    let loadStart = CFAbsoluteTimeGetCurrent()
                     try await renderer.loadSplatScene(url: url)
+                    let elapsed = CFAbsoluteTimeGetCurrent() - loadStart
+                    await AppLogger.shared.perf("[3DGS] 加载完成，耗时 \(String(format: "%.2f", elapsed))s")
                 } catch {
-                    log.error("加载 3DGS 场景失败: \(error.localizedDescription)")
+                    await log.error("加载 3DGS 场景失败: \(error.localizedDescription)")
+                    await AppLogger.shared.error("[3DGS] 加载失败: \(error.localizedDescription)")
                 }
+            } else {
+                await AppLogger.shared.warn("[3DGS] 未选择 splat 文件")
             }
             
             // 启动渲染循环
-            renderer.startRenderLoop()
+            await AppLogger.shared.info("[3DGS] 启动渲染循环")
+            await renderer.startRenderLoop()
         }
     }
     
@@ -127,6 +139,7 @@ final class GaussianSplatRenderer: @unchecked Sendable {
     func loadSplatScene(url: URL) async throws {
         Self.log.info("开始加载 3DGS 场景: \(url.lastPathComponent)")
         
+        var t0 = CFAbsoluteTimeGetCurrent()
         let splat = try SplatRenderer(
             device: device,
             colorFormat: layerRenderer.configuration.colorFormat,
@@ -135,11 +148,20 @@ final class GaussianSplatRenderer: @unchecked Sendable {
             maxViewCount: layerRenderer.properties.viewCount,
             maxSimultaneousRenders: Self.maxSimultaneousRenders
         )
+        AppLogger.shared.perf("[3DGS] SplatRenderer 创建: \(String(format: "%.2f", CFAbsoluteTimeGetCurrent() - t0))s")
         
+        t0 = CFAbsoluteTimeGetCurrent()
         let reader = try AutodetectSceneReader(url)
         let points = try await reader.readAll()
+        AppLogger.shared.perf("[3DGS] 读取点云 (\(points.count) 点): \(String(format: "%.2f", CFAbsoluteTimeGetCurrent() - t0))s")
+        
+        t0 = CFAbsoluteTimeGetCurrent()
         let chunk = try SplatChunk(device: device, from: points)
+        AppLogger.shared.perf("[3DGS] SplatChunk 创建: \(String(format: "%.2f", CFAbsoluteTimeGetCurrent() - t0))s")
+        
+        t0 = CFAbsoluteTimeGetCurrent()
         await splat.addChunk(chunk)
+        AppLogger.shared.perf("[3DGS] addChunk (排序): \(String(format: "%.2f", CFAbsoluteTimeGetCurrent() - t0))s")
         
         self.splatRenderer = splat
         Self.log.info("3DGS 场景加载完成，共 \(points.count) 个 splat")
@@ -198,19 +220,32 @@ final class GaussianSplatRenderer: @unchecked Sendable {
     
     // MARK: - 渲染循环
     func startRenderLoop() {
-        Task(executorPreference: GaussianSplatTaskExecutor.shared) { [self] in
-            do {
-                try await self.arSession.run([self.worldTracking])
-            } catch {
-                Self.log.error("ARKit 会话启动失败: \(error)")
-                return
+        // 使用 GCD 直接在专用渲染队列上运行，
+        // 避免 Swift Task 的 actor 继承和 executor 偏好不确定性
+        let renderQueue = DispatchQueue(label: "GaussianSplatRenderQueue", qos: .userInteractive)
+        renderQueue.async { [self] in
+            AppLogger.shared.info("[3DGS] 渲染线程: \(Thread.isMainThread ? "⚠️ 主线程" : "✅ 后台线程")")
+            
+            // ARKit 会话需要通过 Task 启动（async API）
+            let arReady = DispatchSemaphore(value: 0)
+            Task.detached { [self] in
+                do {
+                    try await self.arSession.run([self.worldTracking])
+                } catch {
+                    await AppLogger.shared.error("[3DGS] ARKit 启动失败: \(error.localizedDescription)")
+                }
+                arReady.signal()
             }
+            arReady.wait()
             
             // 初始化云台
             let client = GimbalClient(serverIP: self.serverIP)
             self.gimbalClient = client
             
             self.renderLoop()
+            
+            // 渲染循环退出后，主动清理所有资源
+            self.cleanup()
         }
     }
     
@@ -470,6 +505,40 @@ final class GaussianSplatRenderer: @unchecked Sendable {
             bindVideoTrack(newTrack)
         }
     }
+    
+    // MARK: - 资源清理 (渲染循环退出时调用)
+    private func cleanup() {
+        Self.log.info("开始清理 GaussianSplatRenderer 资源")
+        AppLogger.shared.info("[3DGS] 开始资源清理")
+        
+        // 1. 解绑视频轨道，停止 videoBridge 接收新帧
+        bindVideoTrack(nil)
+        
+        // 2. 等待所有 in-flight command buffer 完成
+        for _ in 0..<Self.maxSimultaneousRenders {
+            inFlightSemaphore.wait()
+        }
+        // 立即释放回去，避免影响后续流程
+        for _ in 0..<Self.maxSimultaneousRenders {
+            inFlightSemaphore.signal()
+        }
+        
+        // 3. 清理 videoBridge 的 GPU 资源
+        videoBridge.cleanup()
+        
+        // 4. 释放 3DGS 渲染器 (释放大量 GPU 缓冲区)
+        splatRenderer = nil
+        
+        // 5. 停止 ARKit 会话
+        arSession.stop()
+        
+        // 6. 清除引用
+        gimbalClient = nil
+        appModel = nil
+        
+        Self.log.info("GaussianSplatRenderer 资源清理完成")
+        AppLogger.shared.info("[3DGS] 资源清理完成")
+    }
 }
 
 // MARK: - LayerRenderer.Clock 扩展
@@ -484,21 +553,5 @@ extension LayerRenderer.Clock.Instant.Duration {
 extension Collection {
     subscript(safe index: Index) -> Element? {
         indices.contains(index) ? self[index] : nil
-    }
-}
-
-// MARK: - 渲染线程 Executor
-final class GaussianSplatTaskExecutor: TaskExecutor {
-    static let shared = GaussianSplatTaskExecutor()
-    private let queue = DispatchQueue(label: "GaussianSplatRenderQueue", qos: .userInteractive)
-    
-    func enqueue(_ job: UnownedJob) {
-        queue.async {
-            job.runSynchronously(on: self.asUnownedSerialExecutor())
-        }
-    }
-    
-    nonisolated func asUnownedSerialExecutor() -> UnownedTaskExecutor {
-        UnownedTaskExecutor(ordinary: self)
     }
 }

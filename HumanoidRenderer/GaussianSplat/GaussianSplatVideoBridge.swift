@@ -32,6 +32,9 @@ final class GaussianSplatVideoBridge: NSObject, @unchecked Sendable, VideoRender
     private var _rightTexture: MTLTexture?
     private let lock = NSLock()
     
+    // 背压控制：限制同时在 GPU 上执行的帧转换数量
+    private let frameSemaphore = DispatchSemaphore(value: 2)
+    
     // 是否已经收到过至少一帧
     private(set) var hasTexture: Bool = false
     
@@ -125,21 +128,34 @@ final class GaussianSplatVideoBridge: NSObject, @unchecked Sendable, VideoRender
         captureDevice: AVCaptureDevice?,
         captureOptions: VideoCaptureOptions?
     ) {
-        guard let pixelBuffer = frame.toCVPixelBuffer() else { return }
+        // 背压控制：如果 GPU 上已有 2 帧在处理，跳过本帧避免堆积
+        guard frameSemaphore.wait(timeout: .now()) == .success else { return }
         
-        guard let yTexture = makeTexture(from: pixelBuffer, planeIndex: 0, pixelFormat: .r8Unorm),
-              let uvTexture = makeTexture(from: pixelBuffer, planeIndex: 1, pixelFormat: .rg8Unorm) else {
+        guard let pixelBuffer = frame.toCVPixelBuffer() else {
+            frameSemaphore.signal()
             return
         }
         
-        guard let commandBuffer = commandQueue.makeCommandBuffer() else { return }
+        guard let yTexture = makeTexture(from: pixelBuffer, planeIndex: 0, pixelFormat: .r8Unorm),
+              let uvTexture = makeTexture(from: pixelBuffer, planeIndex: 1, pixelFormat: .rg8Unorm) else {
+            frameSemaphore.signal()
+            return
+        }
+        
+        guard let commandBuffer = commandQueue.makeCommandBuffer() else {
+            frameSemaphore.signal()
+            return
+        }
         
         lock.lock()
         let leftTex = _leftTexture
         let rightTex = _rightTexture
         lock.unlock()
         
-        guard let leftTex, let rightTex else { return }
+        guard let leftTex, let rightTex else {
+            frameSemaphore.signal()
+            return
+        }
         
         // 处理左眼 (上半)
         if let encoder = commandBuffer.makeComputeCommandEncoder() {
@@ -165,8 +181,28 @@ final class GaussianSplatVideoBridge: NSObject, @unchecked Sendable, VideoRender
             encoder.endEncoding()
         }
         
+        // 背压: command buffer 完成后释放信号量 + flush 纹理缓存
+        let semaphore = frameSemaphore
+        let cache = textureCache
+        commandBuffer.addCompletedHandler { _ in
+            semaphore.signal()
+            // 释放 CVMetalTextureCache 中不再使用的纹理引用
+            if let cache { CVMetalTextureCacheFlush(cache, 0) }
+        }
         commandBuffer.commit()
         
         hasTexture = true
+    }
+    
+    // MARK: - 资源清理
+    func cleanup() {
+        lock.lock()
+        _leftTexture = nil
+        _rightTexture = nil
+        lock.unlock()
+        hasTexture = false
+        if let textureCache {
+            CVMetalTextureCacheFlush(textureCache, 0)
+        }
     }
 }
