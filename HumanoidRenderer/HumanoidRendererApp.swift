@@ -44,7 +44,6 @@ struct HumanroidRendererApp: App {
             CompositorLayer(configuration: ContentStageConfiguration()) { layerRenderer in
                 GaussianSplatRenderer.startRendering(
                     layerRenderer,
-                    splatURL: self.appModel.splatFileURL,
                     appModel: self.appModel,
                     serverIP: UserDefaults.standard.string(forKey: "serverIP") ?? "localhost"
                 )

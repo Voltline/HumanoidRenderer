@@ -40,9 +40,11 @@ vertex VideoQuadVertex videoQuadVertexShader(
         float2(1, 1), float2(1, 0), float2(0, 0)
     };
     
-    // 在 3D 空间中放置一个平面 (宽 1.778, 高 1.0, 距离 -2m)
+    // 视频平面放置在 3m 处，角张角 ~65°H × 39°V (舒适观影距离)
+    // half_w = 3.0 * tan(32.5°) ≈ 1.911
+    // half_h = half_w * 9/16   ≈ 1.075
     float2 pos2d = positions[vertexID];
-    float4 worldPos = float4(pos2d.x * 0.889, pos2d.y * 0.5, -2.0, 1.0);
+    float4 worldPos = float4(pos2d.x * 1.911, pos2d.y * 1.075, -3.0, 1.0);
     
     VideoQuadVertex out;
     out.position = uniforms.modelViewProjection[ampID] * worldPos;
@@ -51,11 +53,17 @@ vertex VideoQuadVertex videoQuadVertexShader(
     return out;
 }
 
-// MARK: - 片段着色器
+// MARK: - 片段着色器 (左右眼分别采样对应纹理)
 fragment float4 videoQuadFragmentShader(
     VideoQuadVertex in [[stage_in]],
-    texture2d<float> tex [[texture(0)]]
+    texture2d<float> leftTex  [[texture(0)]],
+    texture2d<float> rightTex [[texture(1)]]
 ) {
     constexpr sampler bilinear(address::clamp_to_edge, filter::linear);
-    return tex.sample(bilinear, in.texCoord);
+    // renderTargetArrayIndex: 0 = 左眼, 1 = 右眼
+    if (in.renderTargetArrayIndex == 0) {
+        return leftTex.sample(bilinear, in.texCoord);
+    } else {
+        return rightTex.sample(bilinear, in.texCoord);
+    }
 }

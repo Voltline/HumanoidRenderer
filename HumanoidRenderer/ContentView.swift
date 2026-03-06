@@ -9,15 +9,13 @@ import SwiftUI
 import RealityKit
 import RealityKitContent
 import LiveKit
-import UniformTypeIdentifiers
 
 struct ContentView: View {
     @EnvironmentObject private var liveKitVM: LiveKitViewModel
     @Environment(AppModel.self) private var appModel: AppModel
     @AppStorage("serverIP") private var serverIP: String = "localhost"
     @State private var showModifyServerIP: Bool = false
-    @State private var showSplatFilePicker: Bool = false
-    @State private var showLogPanel: Bool = false
+    @State private var showLogPanel: Bool = true
     @State private var logRefreshTick: Int = 0
     var body: some View {
         VStack {
@@ -38,24 +36,16 @@ struct ContentView: View {
                 .padding(.horizontal)
                 .disabled(appModel.immersiveSpaceState != .closed)
                 
-                // 3DGS 模式下显示文件选择
+                // 3DGS 模式下显示模型选择
                 if appModel.renderingMode == .gaussianSplat {
-                    HStack {
-                        if let url = appModel.splatFileURL {
-                            Text("已选择: \(url.lastPathComponent)")
-                                .font(.caption)
-                                .foregroundStyle(.green)
-                        } else {
-                            Text("请选择 .ply / .splat / .spz 文件")
-                                .font(.caption)
-                                .foregroundStyle(.orange)
+                    Picker("生成模型", selection: Bindable(appModel).splatModel) {
+                        ForEach(SplatModel.allCases) { model in
+                            Text(model.rawValue).tag(model)
                         }
-                        Button("选择文件") {
-                            showSplatFilePicker = true
-                        }
-                        .disabled(appModel.immersiveSpaceState != .closed)
                     }
-                    .padding(.vertical, 4)
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal)
+                    .disabled(appModel.immersiveSpaceState != .closed)
                 }
                 
                 switch appModel.phase {
@@ -65,15 +55,40 @@ struct ContentView: View {
                     Text("正在将电机复位")
                 case .scanning:
                     VStack {
-                        Text("正在扫描")
+                        if appModel.renderingMode == .gaussianSplat {
+                            Text("正在扫描并提交生成任务...")
+                        } else {
+                            Text("正在扫描")
+                        }
                         ProgressView(value: appModel.scanProgress, total: 1)
                             .padding()
                     }
                 case .baking:
-                    Text("扫描完毕，正在烘焙材质")
+                    VStack {
+                        if appModel.renderingMode == .gaussianSplat {
+                            Text("正在生成 3DGS 场景...")
+                            if !appModel.generationProgress.isEmpty {
+                                Text(appModel.generationProgress)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            ProgressView()
+                                .padding(.top, 4)
+                        } else {
+                            Text("扫描完毕，正在烘焙材质")
+                        }
+                    }
                 case .ready:
-                    Text("即将就绪，请稍候")
-                        .foregroundStyle(Color.green)
+                    VStack {
+                        if appModel.renderingMode == .gaussianSplat {
+                            Text("正在下载并加载场景...")
+                            ProgressView()
+                                .padding(.top, 4)
+                        } else {
+                            Text("即将就绪，请稍候")
+                                .foregroundStyle(Color.green)
+                        }
+                    }
                 case .live:
                     Text("串流中")
                         .foregroundStyle(Color.green)
@@ -105,34 +120,16 @@ struct ContentView: View {
                 TextField("例如: 192.168.31.100", text: $serverIP)
             }
         }
-        .fileImporter(
-            isPresented: $showSplatFilePicker,
-            allowedContentTypes: [.data],
-            allowsMultipleSelection: false
-        ) { result in
-            if case .success(let urls) = result, let url = urls.first {
-                // 开始访问安全范围
-                if url.startAccessingSecurityScopedResource() {
-                    // 释放旧 URL 的安全范围访问
-                    appModel.splatFileURL?.stopAccessingSecurityScopedResource()
-                    appModel.splatFileURL = url
-                }
-            }
-        }
         // 注意: .task 在 View 出现时执行一次
-        // 全景球模式需要 LiveKit; 3DGS 纯渲染模式不需要
-        // .onChange 监听模式切换，在需要时再连接
+        // 两种模式都需要 LiveKit 视频流
         .onChange(of: appModel.renderingMode) {
-            if appModel.renderingMode == .panoramaSphere {
-                liveKitVM.connect(serverIP: serverIP)
-            } else {
-                liveKitVM.disconnect()
-            }
+            liveKitVM.connect(serverIP: serverIP)
         }
         .onAppear {
             AppLogger.shared.onChange = { [self] in
                 logRefreshTick += 1
             }
+            liveKitVM.connect(serverIP: serverIP)
         }
         .padding()
     }

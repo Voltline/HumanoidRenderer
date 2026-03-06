@@ -151,11 +151,13 @@ struct ImmersiveView: View {
         let headAnchor = AnchorEntity(.head)
         headAnchor.name = "headAnchor"
 
-        // 16:9 比例的平面，约等于 80 英寸屏幕在 2 米远的效果
-        let planeMesh = MeshResource.generatePlane(width: 1.778, height: 1.0)
+        // 视频平面放置在 3m 处，角张角 ~65°H × 39°V (舒适观影距离)
+        // half_w = 3.0 * tan(32.5°) ≈ 1.911,  half_h = half_w * 9/16 ≈ 1.075
+        // width  = 3.822,  height = 2.150
+        let planeMesh = MeshResource.generatePlane(width: 3.822, height: 2.150)
         let patch = ModelEntity(mesh: planeMesh, materials: [UnlitMaterial(color: .black)])
         patch.name = "patch"
-        patch.position = [0, 0, -2] // 放置在前方 2 米
+        patch.position = [0, 0, -3] // 放置在前方 3 米
 
         headAnchor.addChild(patch)
         content.add(headAnchor)

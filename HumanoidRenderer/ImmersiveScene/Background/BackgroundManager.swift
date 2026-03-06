@@ -18,9 +18,8 @@ class BackgroundManager {
         // 清理旧引用
         sphereEntity = nil
         
-        // 1. 创建巨大的球体网格 (半径 100米)
-        // 使用较大的段数 (128) 保证球体边缘圆滑
-        let mesh = MeshResource.generateSphere(radius: 100)
+        // 1. 创建全景球体 (半径 10 米，接近真实房间尺度)
+        let mesh = MeshResource.generateSphere(radius: 10)
         
         // 2. 初始材质 (深灰色，避免全黑看不见)
         var material = UnlitMaterial()

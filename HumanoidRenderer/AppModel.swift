@@ -33,6 +33,15 @@ enum RenderingMode: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+/// 3DGS 生成模型选择
+enum SplatModel: String, CaseIterable, Identifiable {
+    case plus = "Marble 0.1-plus"
+    case mini = "Marble 0.1-mini"
+    
+    var id: String { rawValue }
+    var apiValue: String { rawValue }
+}
+
 /// Maintains app-wide state
 @MainActor
 @Observable
@@ -45,7 +54,8 @@ class AppModel {
     var phase: SystemPhase = .idle
     var scanProgress: Float = 0.0
     var bakedTextureResource: TextureResource?  // 存放烘焙后的材质
-    var splatFileURL: URL?  // 用户选择的 .ply/.splat/.spz 文件路径
+    var splatModel: SplatModel = .plus  // 3DGS 生成模型
+    var generationProgress: String = ""  // 3DGS 生成进度文案
     
     /// 根据当前渲染模式返回对应的 ImmersiveSpace ID
     var activeSpaceID: String {

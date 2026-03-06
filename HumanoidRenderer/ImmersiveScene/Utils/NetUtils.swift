@@ -53,6 +53,91 @@ actor GimbalClient {
         return data
     }
 
+    // MARK: - 3DGS 在线生成 API
+
+    /// 触发 3DGS 生成，返回 job_id
+    func startGaussianSplatGeneration(model: String) async throws -> String {
+        let body: [String: Any] = ["model": model]
+        let result = try await send(path: "/scan/3dgs", method: "POST", body: body)
+        guard let jobId = result["job_id"] as? String else {
+            throw NSError(domain: "3DGS", code: -1, userInfo: [NSLocalizedDescriptionKey: "未返回 job_id"])
+        }
+        return jobId
+    }
+
+    /// 轮询本地 3DGS 任务状态 (SCANNING → UPLOADING → SUBMITTED / FAILED)
+    struct JobStatus {
+        let status: String
+        let operationId: String?
+        let worldId: String?
+        let error: String?
+    }
+
+    func pollJobStatus(jobId: String) async throws -> JobStatus {
+        let result = try await send(path: "/3dgs/job/\(jobId)", method: "GET")
+        return JobStatus(
+            status: result["status"] as? String ?? "UNKNOWN",
+            operationId: result["operation_id"] as? String,
+            worldId: result["world_id"] as? String,
+            error: result["error"] as? String
+        )
+    }
+
+    /// 轮询 World Labs 生成进度
+    struct OperationStatus {
+        let done: Bool
+        let progressDescription: String?
+        let worldId: String?
+        /// 生成完成时，response.assets.splats.spz_urls.full_res
+        let fullResSpzUrl: String?
+    }
+
+    func pollOperationStatus(operationId: String) async throws -> OperationStatus {
+        let result = try await send(path: "/3dgs/operation/\(operationId)", method: "GET")
+        let done = result["done"] as? Bool ?? false
+        let metadata = result["metadata"] as? [String: Any]
+        let progress = metadata?["progress"] as? [String: Any]
+        let progressDesc = progress?["description"] as? String
+        let worldId = metadata?["world_id"] as? String
+
+        var fullResUrl: String? = nil
+        if done, let response = result["response"] as? [String: Any],
+           let assets = response["assets"] as? [String: Any],
+           let splats = assets["splats"] as? [String: Any],
+           let spzUrls = splats["spz_urls"] as? [String: Any] {
+            fullResUrl = spzUrls["full_res"] as? String
+        }
+
+        return OperationStatus(
+            done: done,
+            progressDescription: progressDesc,
+            worldId: worldId,
+            fullResSpzUrl: fullResUrl
+        )
+    }
+
+    /// 代理下载资产文件 (SPZ)
+    func downloadAsset(assetUrl: String) async throws -> Data {
+        guard var urlComponents = URLComponents(url: baseURL.appendingPathComponent("/3dgs/asset"), resolvingAgainstBaseURL: false) else {
+            throw NSError(domain: "3DGS", code: -1, userInfo: [NSLocalizedDescriptionKey: "URL 构建失败"])
+        }
+        urlComponents.queryItems = [URLQueryItem(name: "url", value: assetUrl)]
+        guard let url = urlComponents.url else {
+            throw NSError(domain: "3DGS", code: -1, userInfo: [NSLocalizedDescriptionKey: "URL 构建失败"])
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 300.0 // SPZ 可能较大
+
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            throw NSError(domain: "3DGS", code: -1, userInfo: [NSLocalizedDescriptionKey: "资产下载失败"])
+        }
+        return data
+    }
+
     // MARK: - 通用私有方法
     private func send(path: String, method: String, body: [String: Any]? = nil) async throws -> [String: Any] {
         var request = URLRequest(url: baseURL.appendingPathComponent(path))
