@@ -26,8 +26,29 @@ actor GimbalClient {
     }
 
     func sendDelta(yaw: Float, pitch: Float) async throws {
+        let reqStartNs = DispatchTime.now().uptimeNanoseconds
         let body: [String: Any] = ["delta_yaw": yaw, "delta_pitch": pitch]
-        _ = try await send(path: "/gimbal/delta", method: "POST", body: body)
+        let result = try await send(path: "/gimbal/delta", method: "POST", body: body)
+        let rttMs = Double(DispatchTime.now().uptimeNanoseconds - reqStartNs) / 1_000_000.0
+        let serverProcMs = parseDouble(result["t_server_proc_ms"])
+        let mechanicalMs = parseDouble(result["t_mechanical_ms"])
+
+        Task {
+            await LatencyMetrics.shared.recordCommand(
+                rttMs: rttMs,
+                serverProcMs: serverProcMs,
+                mechanicalMs: mechanicalMs
+            )
+        }
+    }
+
+    func setLatencyVideoStamp(enabled: Bool) async {
+        let body: [String: Any] = ["enabled": enabled]
+        do {
+            _ = try await send(path: "/latency/video_stamp", method: "POST", body: body)
+        } catch {
+            AppLogger.shared.warn("[MTP] 设置视频时延标记失败: \(error.localizedDescription)")
+        }
     }
 
     // MARK: - 全景扫描 API
@@ -150,5 +171,18 @@ actor GimbalClient {
         // 简单的容错处理，防止空返回崩溃
         if data.isEmpty { return [:] }
         return try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+    }
+
+    private func parseDouble(_ value: Any?) -> Double? {
+        if let doubleValue = value as? Double {
+            return doubleValue
+        }
+        if let intValue = value as? Int {
+            return Double(intValue)
+        }
+        if let numberValue = value as? NSNumber {
+            return numberValue.doubleValue
+        }
+        return nil
     }
 }

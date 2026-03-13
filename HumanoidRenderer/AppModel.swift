@@ -56,6 +56,10 @@ class AppModel {
     var bakedTextureResource: TextureResource?  // 存放烘焙后的材质
     var splatModel: SplatModel = .plus  // 3DGS 生成模型
     var generationProgress: String = ""  // 3DGS 生成进度文案
+    var latencyTestArmed: Bool = false
+    var latencyTestRunning: Bool = false
+    var latencyTestDurationSec: Double = 30.0
+    var latencyTestSummary: String = ""
     
     /// 根据当前渲染模式返回对应的 ImmersiveSpace ID
     var activeSpaceID: String {

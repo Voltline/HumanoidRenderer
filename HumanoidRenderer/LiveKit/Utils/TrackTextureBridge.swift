@@ -23,6 +23,13 @@ final class TrackTextureBridge: NSObject, ObservableObject, VideoRenderer {
 
     // MARK: - Internal state
     private var didLogFirstFrame = false
+    private var frameIndex: UInt64 = 0
+
+    private static let stampSyncBits: [UInt8] = [1, 0, 1, 0, 1, 0, 1, 0]
+    private static let stampBitCount: Int = 56 // 8bit sync + 48bit unix_ms
+    private static let stampBlockW: Int = 4
+    private static let stampBlockH: Int = 4
+    private static let stampThreshold: Int = 128
     
     // MARK: - RealityKit Stable Resources
     let leftTexture: TextureResource
@@ -111,11 +118,26 @@ final class TrackTextureBridge: NSObject, ObservableObject, VideoRenderer {
         captureDevice: AVCaptureDevice?,
         captureOptions: VideoCaptureOptions?
     ) {
+        let renderStartNs = DispatchTime.now().uptimeNanoseconds
+
         // 尝试获取 PixelBuffer
         guard let pixelBuffer = frame.toCVPixelBuffer() else { return }
-        
-        let width = 1920
-        let height = 2160
+
+        frameIndex &+= 1
+        if !didLogFirstFrame {
+            didLogFirstFrame = true
+            AppLogger.shared.info("[MTP] 视频帧回调已开始，尝试直接测量 T_video_down")
+        }
+        if frameIndex % 3 == 0,
+           let serverSendUnixMs = decodeLatencyStamp(from: pixelBuffer) {
+            let clientRecvUnixMs = Date().timeIntervalSince1970 * 1000.0
+            Task {
+                await LatencyMetrics.shared.recordVideoDownMeasured(
+                    serverSendUnixMs: serverSendUnixMs,
+                    clientRecvUnixMs: clientRecvUnixMs
+                )
+            }
+        }
         
         // 映射 Y 和 UV 纹理
         guard let yTexture = makeTexture(from: pixelBuffer, planeIndex: 0, pixelFormat: .r8Unorm),
@@ -154,8 +176,65 @@ final class TrackTextureBridge: NSObject, ObservableObject, VideoRenderer {
             encoder.endEncoding()
         }
         
+        let startNs = renderStartNs
+        commandBuffer.addCompletedHandler { _ in
+            let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds - startNs) / 1_000_000.0
+            Task {
+                await LatencyMetrics.shared.recordRender(ms: elapsedMs)
+            }
+        }
+
         // 提交指令，GPU开始工作
         commandBuffer.commit()
+    }
+
+    private func decodeLatencyStamp(from pixelBuffer: CVPixelBuffer) -> Double? {
+        guard CVPixelBufferGetPlaneCount(pixelBuffer) > 0 else { return nil }
+
+        let width = CVPixelBufferGetWidthOfPlane(pixelBuffer, 0)
+        let height = CVPixelBufferGetHeightOfPlane(pixelBuffer, 0)
+        let requiredWidth = Self.stampBitCount * Self.stampBlockW
+        guard width >= requiredWidth, height >= Self.stampBlockH else { return nil }
+
+        CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
+
+        guard let baseAddress = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 0) else {
+            return nil
+        }
+
+        let bytesPerRow = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 0)
+        let yPointer = baseAddress.assumingMemoryBound(to: UInt8.self)
+        var bits = Array(repeating: UInt8(0), count: Self.stampBitCount)
+
+        for bitIndex in 0..<Self.stampBitCount {
+            let x0 = bitIndex * Self.stampBlockW
+            var sum = 0
+            for row in 0..<Self.stampBlockH {
+                let rowPointer = yPointer.advanced(by: row * bytesPerRow + x0)
+                for col in 0..<Self.stampBlockW {
+                    sum += Int(rowPointer[col])
+                }
+            }
+            let avg = sum / (Self.stampBlockW * Self.stampBlockH)
+            bits[bitIndex] = avg >= Self.stampThreshold ? 1 : 0
+        }
+
+        var syncErrors = 0
+        for idx in 0..<Self.stampSyncBits.count {
+            if bits[idx] != Self.stampSyncBits[idx] {
+                syncErrors += 1
+            }
+        }
+        if syncErrors > 1 { return nil }
+
+        var unixMs: UInt64 = 0
+        for idx in Self.stampSyncBits.count..<Self.stampBitCount {
+            unixMs = (unixMs << 1) | UInt64(bits[idx])
+        }
+        if unixMs == 0 { return nil }
+
+        return Double(unixMs)
     }
     
     // 抓取当前左眼画面的静态副本

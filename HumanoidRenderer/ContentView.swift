@@ -13,10 +13,12 @@ import LiveKit
 struct ContentView: View {
     @EnvironmentObject private var liveKitVM: LiveKitViewModel
     @Environment(AppModel.self) private var appModel: AppModel
+    @Environment(\.openImmersiveSpace) private var openImmersiveSpace
     @AppStorage("serverIP") private var serverIP: String = "localhost"
     @State private var showModifyServerIP: Bool = false
     @State private var showLogPanel: Bool = true
     @State private var logRefreshTick: Int = 0
+    @State private var launchingLatencyTest: Bool = false
     var body: some View {
         VStack {
             Model3D(named: "Scene", bundle: realityKitContentBundle)
@@ -93,6 +95,37 @@ struct ContentView: View {
                     Text("串流中")
                         .foregroundStyle(Color.green)
                 }
+
+                if appModel.renderingMode == .panoramaSphere {
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("时延测试时长: \(Int(appModel.latencyTestDurationSec))s")
+                                .font(.caption)
+                            Slider(
+                                value: Bindable(appModel).latencyTestDurationSec,
+                                in: 10...120,
+                                step: 5
+                            )
+                            .disabled(appModel.immersiveSpaceState != .closed || appModel.latencyTestRunning)
+                        }
+
+                        if appModel.latencyTestRunning {
+                            Text("时延测试进行中，正在采样四项延时...")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        }
+
+                        if !appModel.latencyTestSummary.isEmpty {
+                            Text(appModel.latencyTestSummary)
+                                .font(.system(size: 11, design: .monospaced))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(8)
+                                .background(.thinMaterial)
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                        }
+                    }
+                    .padding(.horizontal)
+                }
                 
                 HStack {
                     Button {
@@ -100,6 +133,17 @@ struct ContentView: View {
                     } label: {
                         Text("修改服务器IP")
                     }
+                    Button {
+                        startLatencyTest()
+                    } label: {
+                        Text(launchingLatencyTest ? "启动中..." : "开始时延测试")
+                    }
+                    .disabled(
+                        appModel.renderingMode != .panoramaSphere
+                        || appModel.immersiveSpaceState != .closed
+                        || appModel.latencyTestRunning
+                        || launchingLatencyTest
+                    )
                     ToggleImmersiveSpaceButton()
                     Button {
                         showLogPanel.toggle()
@@ -132,6 +176,39 @@ struct ContentView: View {
             liveKitVM.connect(serverIP: serverIP)
         }
         .padding()
+    }
+
+    private func startLatencyTest() {
+        Task { @MainActor in
+            guard appModel.renderingMode == .panoramaSphere else {
+                AppLogger.shared.warn("[MTP] 当前仅支持在全景球模式下启动时延测试")
+                return
+            }
+            guard appModel.immersiveSpaceState == .closed else {
+                AppLogger.shared.warn("[MTP] 请先退出沉浸式，再启动时延测试")
+                return
+            }
+
+            launchingLatencyTest = true
+            appModel.latencyTestArmed = true
+            appModel.latencyTestSummary = ""
+            appModel.phase = .idle
+            appModel.immersiveSpaceState = .inTransition
+
+            let result = await openImmersiveSpace(id: appModel.activeSpaceID)
+            switch result {
+            case .opened:
+                AppLogger.shared.info("[MTP] 时延测试已触发，等待沉浸式初始化")
+            case .userCancelled, .error:
+                fallthrough
+            @unknown default:
+                appModel.latencyTestArmed = false
+                appModel.latencyTestRunning = false
+                appModel.immersiveSpaceState = .closed
+                AppLogger.shared.warn("[MTP] 时延测试启动失败：沉浸式未成功打开")
+            }
+            launchingLatencyTest = false
+        }
     }
 }
 

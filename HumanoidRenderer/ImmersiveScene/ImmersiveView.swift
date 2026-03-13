@@ -27,6 +27,7 @@ struct ImmersiveView: View {
     @State private var lastYaw: Float = 0.0
     @State private var lastPitch: Float = 0.0
     @State private var hasBaseline: Bool = false
+    @State private var latencyTestTask: Task<Void, Never>?
     
     @AppStorage("serverIP") private var serverIP: String = "192.168.31.247"
     
@@ -63,6 +64,14 @@ struct ImmersiveView: View {
             let client = GimbalClient(serverIP: serverIP)
             self.gimbalClient = client
         }
+        .onDisappear {
+            latencyTestTask?.cancel()
+            latencyTestTask = nil
+            Task {
+                await gimbalClient?.setLatencyVideoStamp(enabled: false)
+                await finishLatencyTestIfNeeded(reason: "沉浸式退出")
+            }
+        }
         .task {
             await startAutomatedWorkflow()
         }
@@ -71,10 +80,31 @@ struct ImmersiveView: View {
     // MARK: - 自动化全流程
     func startAutomatedWorkflow() async {
         do {
+            let runLatencyTest = appModel.latencyTestArmed
+            if runLatencyTest {
+                appModel.latencyTestArmed = false
+                appModel.latencyTestSummary = ""
+            } else {
+                await gimbalClient?.setLatencyVideoStamp(enabled: false)
+            }
+
             // 第一步 云台复位
             appModel.phase = .initializing
             AppLogger.shared.info("[全景球] 云台复位中...")
             try await gimbalClient?.initGimbal()
+
+            if runLatencyTest {
+                appModel.phase = .ready
+                self.hasBaseline = false
+                await gimbalClient?.setLatencyVideoStamp(enabled: true)
+                await LatencyMetrics.shared.startSession()
+                appModel.latencyTestRunning = true
+                appModel.phase = .live
+                await HeadTracker.shared.startTracking()
+                AppLogger.shared.info("[MTP] 测试模式已启动：跳过背景生成，仅采集实时窗口时延")
+                startLatencyTestCountdown()
+                return
+            }
             
             // 第二步 请求服务端扫描
             appModel.phase = .scanning
@@ -108,6 +138,34 @@ struct ImmersiveView: View {
         } catch {
             AppLogger.shared.error("[全景球] 流水线出错: \(error.localizedDescription)")
         }
+    }
+
+    private func startLatencyTestCountdown() {
+        latencyTestTask?.cancel()
+        let durationSec = max(1.0, appModel.latencyTestDurationSec)
+        let durationNs = UInt64(durationSec * 1_000_000_000.0)
+
+        latencyTestTask = Task {
+            try? await Task.sleep(nanoseconds: durationNs)
+            await finishLatencyTestIfNeeded(reason: "固定时长结束")
+        }
+    }
+
+    private func finishLatencyTestIfNeeded(reason: String) async {
+        guard let summary = await LatencyMetrics.shared.endSession() else { return }
+
+        await gimbalClient?.setLatencyVideoStamp(enabled: false)
+
+        latencyTestTask?.cancel()
+        latencyTestTask = nil
+
+        await MainActor.run {
+            appModel.latencyTestRunning = false
+            appModel.latencyTestSummary = summary.compactDisplayText()
+        }
+
+        AppLogger.shared.perf(summary.oneLine())
+        AppLogger.shared.info("[MTP] 测试结束原因: \(reason)")
     }
 
     // MARK: - 核心：突变过滤处理
