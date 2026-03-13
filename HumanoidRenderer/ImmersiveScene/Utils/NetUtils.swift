@@ -51,6 +51,24 @@ actor GimbalClient {
         }
     }
 
+    func reportLatencySummary(_ summary: LatencyMetrics.Summary, mode: String = "panorama") async -> Bool {
+        let body = summary.reportPayload(mode: mode)
+        do {
+            let result = try await send(path: "/latency/report", method: "POST", body: body)
+            let reportId = result["report_id"] as? String ?? "N/A"
+            let totalReports = parseDouble(result["total_reports"]).map { Int($0) } ?? 0
+            let csvPath = result["csv_path"] as? String ?? ""
+            AppLogger.shared.info("[MTP] 汇总已上报 (id=\(reportId), total=\(totalReports))")
+            if !csvPath.isEmpty {
+                AppLogger.shared.info("[MTP] 服务端CSV: \(csvPath)")
+            }
+            return true
+        } catch {
+            AppLogger.shared.warn("[MTP] 汇总上报失败: \(error.localizedDescription)")
+            return false
+        }
+    }
+
     // MARK: - 全景扫描 API
     // 修改注释：现在获取的是单张 JPEG 全景图，而非 Atlas 数据包
     func fetchPanorama() async throws -> Data {

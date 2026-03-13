@@ -130,6 +130,24 @@ actor LatencyMetrics {
                 tMtpP95
             )
         }
+
+        func reportPayload(mode: String = "panorama") -> [String: Any] {
+            [
+                "client_timestamp_unix_ms": round(Date().timeIntervalSince1970 * 1000.0, 3),
+                "mode": mode,
+                "duration_sec": durationSec,
+                "cmd_count": cmdCount,
+                "mech_count": mechCount,
+                "video_count": videoCount,
+                "render_count": renderCount,
+                "t_cmd_mean_ms": tCmdMean,
+                "t_mech_mean_ms": tMechMean,
+                "t_video_mean_ms": tVideoMean,
+                "t_render_mean_ms": tRenderMean,
+                "t_mtp_mean_ms": tMtpMean,
+                "t_mtp_p95_ms": tMtpP95,
+            ]
+        }
     }
 
     private var renderSamplesMs: [Double] = []

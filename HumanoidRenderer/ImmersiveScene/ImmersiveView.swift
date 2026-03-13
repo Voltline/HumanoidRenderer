@@ -155,13 +155,15 @@ struct ImmersiveView: View {
         guard let summary = await LatencyMetrics.shared.endSession() else { return }
 
         await gimbalClient?.setLatencyVideoStamp(enabled: false)
+        let uploaded = await gimbalClient?.reportLatencySummary(summary, mode: "panorama") ?? false
 
         latencyTestTask?.cancel()
         latencyTestTask = nil
 
         await MainActor.run {
             appModel.latencyTestRunning = false
-            appModel.latencyTestSummary = summary.compactDisplayText()
+            let uploadText = uploaded ? "已上报服务端 CSV" : "上报失败，仅保留本地日志"
+            appModel.latencyTestSummary = summary.compactDisplayText() + "\n" + uploadText
         }
 
         AppLogger.shared.perf(summary.oneLine())

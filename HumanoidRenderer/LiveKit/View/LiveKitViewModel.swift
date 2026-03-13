@@ -96,7 +96,7 @@ final class LiveKitViewModel: ObservableObject {
         latencyProbeTask = nil
     }
 
-    private static func parseDouble(_ value: Any?) -> Double? {
+    nonisolated private static func parseDouble(_ value: Any?) -> Double? {
         if let d = value as? Double { return d }
         if let i = value as? Int { return Double(i) }
         if let n = value as? NSNumber { return n.doubleValue }
