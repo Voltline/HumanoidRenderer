@@ -57,10 +57,10 @@ actor GimbalClient {
             let result = try await send(path: "/latency/report", method: "POST", body: body)
             let reportId = result["report_id"] as? String ?? "N/A"
             let totalReports = parseDouble(result["total_reports"]).map { Int($0) } ?? 0
-            let csvPath = result["csv_path"] as? String ?? ""
+            let storagePath = (result["db_path"] as? String) ?? (result["csv_path"] as? String) ?? ""
             AppLogger.shared.info("[MTP] 汇总已上报 (id=\(reportId), total=\(totalReports))")
-            if !csvPath.isEmpty {
-                AppLogger.shared.info("[MTP] 服务端CSV: \(csvPath)")
+            if !storagePath.isEmpty {
+                AppLogger.shared.info("[MTP] 服务端存储: \(storagePath)")
             }
             return true
         } catch {
