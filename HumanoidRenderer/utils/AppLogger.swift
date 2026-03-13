@@ -133,7 +133,7 @@ actor LatencyMetrics {
 
         func reportPayload(mode: String = "panorama") -> [String: Any] {
             [
-                "client_timestamp_unix_ms": round(Date().timeIntervalSince1970 * 1000.0, 3),
+                "client_timestamp_unix_ms": Date().timeIntervalSince1970 * 1000.0,
                 "mode": mode,
                 "duration_sec": durationSec,
                 "cmd_count": cmdCount,
