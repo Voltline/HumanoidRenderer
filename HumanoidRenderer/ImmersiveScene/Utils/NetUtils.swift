@@ -51,14 +51,22 @@ actor GimbalClient {
         }
     }
 
-    func reportLatencySummary(_ summary: LatencyMetrics.Summary, mode: String = "panorama") async -> Bool {
-        let body = summary.reportPayload(mode: mode)
+    func reportLatencySummary(
+        _ summary: LatencyMetrics.Summary,
+        rawSamples: LatencyMetrics.RawSamples,
+        mode: String = "panorama"
+    ) async -> Bool {
+        var body = summary.reportPayload(mode: mode)
+        body["raw_samples"] = rawSamples.payload()
+        body["raw_sample_count"] = rawSamples.totalCount
+
         do {
             let result = try await send(path: "/latency/report", method: "POST", body: body)
             let reportId = result["report_id"] as? String ?? "N/A"
             let totalReports = parseDouble(result["total_reports"]).map { Int($0) } ?? 0
+            let writtenRaw = parseDouble(result["raw_samples_written"]).map { Int($0) } ?? 0
             let storagePath = (result["db_path"] as? String) ?? (result["csv_path"] as? String) ?? ""
-            AppLogger.shared.info("[MTP] 汇总已上报 (id=\(reportId), total=\(totalReports))")
+            AppLogger.shared.info("[MTP] 汇总+原始样本已上报 (id=\(reportId), total=\(totalReports), raw=\(writtenRaw))")
             if !storagePath.isEmpty {
                 AppLogger.shared.info("[MTP] 服务端存储: \(storagePath)")
             }

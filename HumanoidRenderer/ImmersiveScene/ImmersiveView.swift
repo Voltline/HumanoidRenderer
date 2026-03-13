@@ -153,16 +153,21 @@ struct ImmersiveView: View {
 
     private func finishLatencyTestIfNeeded(reason: String) async {
         guard let summary = await LatencyMetrics.shared.endSession() else { return }
+        let rawSamples = await LatencyMetrics.shared.snapshotRawSamples()
 
         await gimbalClient?.setLatencyVideoStamp(enabled: false)
-        let uploaded = await gimbalClient?.reportLatencySummary(summary, mode: "panorama") ?? false
+        let uploaded = await gimbalClient?.reportLatencySummary(
+            summary,
+            rawSamples: rawSamples,
+            mode: "panorama"
+        ) ?? false
 
         latencyTestTask?.cancel()
         latencyTestTask = nil
 
         await MainActor.run {
             appModel.latencyTestRunning = false
-            let uploadText = uploaded ? "已上报服务端 CSV" : "上报失败，仅保留本地日志"
+            let uploadText = uploaded ? "已上报服务端 SQLite（含汇总+原始样本）" : "上报失败，仅保留本地日志"
             appModel.latencyTestSummary = summary.compactDisplayText() + "\n" + uploadText
         }
 

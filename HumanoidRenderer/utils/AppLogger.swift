@@ -150,6 +150,34 @@ actor LatencyMetrics {
         }
     }
 
+    struct RawSamples: Sendable {
+        let tCmdUpMs: [Double]
+        let tMechMs: [Double]
+        let tVideoDownMs: [Double]
+        let tRenderMs: [Double]
+        let tMtpApproxMs: [Double]
+
+        var totalCount: Int {
+            max(
+                tCmdUpMs.count,
+                tMechMs.count,
+                tVideoDownMs.count,
+                tRenderMs.count,
+                tMtpApproxMs.count
+            )
+        }
+
+        func payload() -> [String: Any] {
+            [
+                "t_cmd_up_ms": tCmdUpMs,
+                "t_mech_ms": tMechMs,
+                "t_video_down_ms": tVideoDownMs,
+                "t_render_ms": tRenderMs,
+                "t_mtp_approx_ms": tMtpApproxMs,
+            ]
+        }
+    }
+
     private var renderSamplesMs: [Double] = []
     private var cmdUpSamplesMs: [Double] = []
     private var mechSamplesMs: [Double] = []
@@ -188,6 +216,36 @@ actor LatencyMetrics {
         sessionRunning = false
         sessionStartNs = nil
         return makeSummary(durationSec: durationSec)
+    }
+
+    func snapshotRawSamples() -> RawSamples {
+        let mtpCount = min(
+            cmdUpSamplesMs.count,
+            mechSamplesMs.count,
+            videoDownSamplesMs.count,
+            renderSamplesMs.count
+        )
+
+        var mtpApproxSamplesMs: [Double] = []
+        mtpApproxSamplesMs.reserveCapacity(mtpCount)
+        if mtpCount > 0 {
+            for index in 0..<mtpCount {
+                mtpApproxSamplesMs.append(
+                    cmdUpSamplesMs[index]
+                        + mechSamplesMs[index]
+                        + videoDownSamplesMs[index]
+                        + renderSamplesMs[index]
+                )
+            }
+        }
+
+        return RawSamples(
+            tCmdUpMs: cmdUpSamplesMs,
+            tMechMs: mechSamplesMs,
+            tVideoDownMs: videoDownSamplesMs,
+            tRenderMs: renderSamplesMs,
+            tMtpApproxMs: mtpApproxSamplesMs
+        )
     }
 
     func isSessionRunning() -> Bool {
