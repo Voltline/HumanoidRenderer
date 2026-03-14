@@ -30,6 +30,62 @@ actor GimbalClient {
         _ = try await send(path: "/gimbal/delta", method: "POST", body: body)
     }
 
+    func reportRenderLatencySamples(
+        mode: String,
+        durationSec: Double,
+        samplesMs: [Double],
+        meanMs: Double,
+        p95Ms: Double,
+        p99Ms: Double
+    ) async -> Bool {
+        guard !samplesMs.isEmpty else {
+            AppLogger.shared.warn("[RenderTest] 无可上报样本，跳过上传")
+            return false
+        }
+
+        let body: [String: Any] = [
+            "client_timestamp_unix_ms": Date().timeIntervalSince1970 * 1000.0,
+            "mode": mode,
+            "duration_sec": durationSec,
+            "render_count": samplesMs.count,
+            "t_render_mean_ms": meanMs,
+            // 渲染对比实验下仅关注渲染项，沿用已有汇总字段方便统一落表。
+            "t_mtp_mean_ms": meanMs,
+            "t_mtp_p95_ms": p95Ms,
+            "raw_sample_count": samplesMs.count,
+            "raw_samples": [
+                "t_render_ms": samplesMs,
+            ],
+        ]
+
+        do {
+            let result = try await send(path: "/latency/report", method: "POST", body: body)
+            let reportId = result["report_id"] as? String ?? "N/A"
+            let totalReports = parseDouble(result["total_reports"]).map { Int($0) } ?? 0
+            let writtenRaw = parseDouble(result["raw_samples_written"]).map { Int($0) } ?? 0
+            let totalRaw = parseDouble(result["total_raw_samples"]).map { Int($0) } ?? 0
+            let storagePath = result["db_path"] as? String ?? ""
+
+            AppLogger.shared.info(String(
+                format: "[RenderTest] 渲染样本已上报 (id=%@, raw=%d, totalReports=%d, totalRaw=%d, mean=%.2fms, P95=%.2fms, P99=%.2fms)",
+                reportId,
+                writtenRaw,
+                totalReports,
+                totalRaw,
+                meanMs,
+                p95Ms,
+                p99Ms
+            ))
+            if !storagePath.isEmpty {
+                AppLogger.shared.info("[RenderTest] 服务端存储: \(storagePath)")
+            }
+            return true
+        } catch {
+            AppLogger.shared.warn("[RenderTest] 上报渲染样本失败: \(error.localizedDescription)")
+            return false
+        }
+    }
+
     // MARK: - 全景扫描 API
     // 修改注释：现在获取的是单张 JPEG 全景图，而非 Atlas 数据包
     func fetchPanorama() async throws -> Data {
@@ -150,5 +206,18 @@ actor GimbalClient {
         // 简单的容错处理，防止空返回崩溃
         if data.isEmpty { return [:] }
         return try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+    }
+
+    private func parseDouble(_ value: Any?) -> Double? {
+        if let doubleValue = value as? Double {
+            return doubleValue
+        }
+        if let intValue = value as? Int {
+            return Double(intValue)
+        }
+        if let numberValue = value as? NSNumber {
+            return numberValue.doubleValue
+        }
+        return nil
     }
 }

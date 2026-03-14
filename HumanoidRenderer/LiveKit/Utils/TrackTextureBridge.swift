@@ -33,6 +33,7 @@ final class TrackTextureBridge: NSObject, ObservableObject, VideoRenderer {
     private var renderLatencySamplesMs: [Double] = []
     private var renderSampleStartAt: Date?
     private var renderSummaryLogged: Bool = false
+    private var didUploadRenderSamples: Bool = false
     private let renderBackendMode: RenderBackendMode
     
     // MARK: - RealityKit Stable Resources
@@ -275,11 +276,23 @@ final class TrackTextureBridge: NSObject, ObservableObject, VideoRenderer {
 
         if count == Self.renderSampleTargetCount && !renderSummaryLogged {
             renderSummaryLogged = true
-            AppLogger.shared.perf(makeRenderSummary())
+            let stats = currentRenderStats()
+            AppLogger.shared.perf(makeRenderSummary(stats: stats))
+            uploadRenderSamplesIfNeeded(stats: stats)
         }
     }
 
-    private func makeRenderSummary() -> String {
+    private struct RenderStats {
+        let count: Int
+        let mean: Double
+        let p95: Double
+        let p99: Double
+        let min: Double
+        let max: Double
+        let wallSec: Double
+    }
+
+    private func currentRenderStats() -> RenderStats {
         let samples = renderLatencySamplesMs
         let count = samples.count
         let meanVal = Self.mean(samples) ?? 0.0
@@ -289,17 +302,61 @@ final class TrackTextureBridge: NSObject, ObservableObject, VideoRenderer {
         let maxVal = samples.max() ?? meanVal
         let wallSec = renderSampleStartAt.map { Date().timeIntervalSince($0) } ?? 0.0
 
+        return RenderStats(
+            count: count,
+            mean: meanVal,
+            p95: p95Val,
+            p99: p99Val,
+            min: minVal,
+            max: maxVal,
+            wallSec: wallSec
+        )
+    }
+
+    private func makeRenderSummary(stats: RenderStats) -> String {
         return String(
             format: "[RenderTest][%@] DONE N=%d | mean=%.2fms P95=%.2fms P99=%.2fms min=%.2fms max=%.2fms wall=%.1fs",
             renderBackendMode.title,
-            count,
-            meanVal,
-            p95Val,
-            p99Val,
-            minVal,
-            maxVal,
-            wallSec
+            stats.count,
+            stats.mean,
+            stats.p95,
+            stats.p99,
+            stats.min,
+            stats.max,
+            stats.wallSec
         )
+    }
+
+    private func uploadRenderSamplesIfNeeded(stats: RenderStats) {
+        guard !didUploadRenderSamples else { return }
+        didUploadRenderSamples = true
+
+        let backendRaw = renderBackendMode.rawValue
+        let backendTitle = renderBackendMode.title
+        let reportMode = "render_only_\(backendRaw)"
+        let samples = renderLatencySamplesMs
+        let durationSec = stats.wallSec
+        let meanMs = stats.mean
+        let p95Ms = stats.p95
+        let p99Ms = stats.p99
+        let serverIP = UserDefaults.standard.string(forKey: "serverIP") ?? "localhost"
+
+        Task {
+            let client = GimbalClient(serverIP: serverIP)
+            let uploaded = await client.reportRenderLatencySamples(
+                mode: reportMode,
+                durationSec: durationSec,
+                samplesMs: samples,
+                meanMs: meanMs,
+                p95Ms: p95Ms,
+                p99Ms: p99Ms
+            )
+            if uploaded {
+                AppLogger.shared.info("[RenderTest] 原始样本上传完成 (backend=\(backendTitle), N=\(samples.count))")
+            } else {
+                AppLogger.shared.warn("[RenderTest] 原始样本上传失败 (backend=\(backendTitle))")
+            }
+        }
     }
 
     private static func mean(_ values: [Double]) -> Double? {
