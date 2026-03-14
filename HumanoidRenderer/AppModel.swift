@@ -42,6 +42,32 @@ enum SplatModel: String, CaseIterable, Identifiable {
     var apiValue: String { rawValue }
 }
 
+/// 客户端视频渲染后端（用于渲染链路对比实验）
+enum RenderBackendMode: String, CaseIterable, Identifiable {
+    case lowLevelTexture = "lowlevel_texture"
+    case legacyVideoToolbox = "legacy_videotoolbox"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .lowLevelTexture:
+            return "LowLevelTexture(当前)"
+        case .legacyVideoToolbox:
+            return "VideoToolbox(5950131)"
+        }
+    }
+
+    var latencyBoundaryDescription: String {
+        switch self {
+        case .lowLevelTexture:
+            return "render回调入口 -> Metal commandBuffer completed"
+        case .legacyVideoToolbox:
+            return "render回调入口 -> TextureResource.replace完成"
+        }
+    }
+}
+
 /// Maintains app-wide state
 @MainActor
 @Observable

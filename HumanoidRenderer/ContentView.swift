@@ -14,9 +14,22 @@ struct ContentView: View {
     @EnvironmentObject private var liveKitVM: LiveKitViewModel
     @Environment(AppModel.self) private var appModel: AppModel
     @AppStorage("serverIP") private var serverIP: String = "localhost"
+    @AppStorage("renderBackendMode") private var renderBackendModeRaw: String = RenderBackendMode.lowLevelTexture.rawValue
     @State private var showModifyServerIP: Bool = false
     @State private var showLogPanel: Bool = true
     @State private var logRefreshTick: Int = 0
+
+    private var renderBackendBinding: Binding<RenderBackendMode> {
+        Binding(
+            get: {
+                RenderBackendMode(rawValue: renderBackendModeRaw) ?? .lowLevelTexture
+            },
+            set: { newValue in
+                renderBackendModeRaw = newValue.rawValue
+            }
+        )
+    }
+
     var body: some View {
         VStack {
             Model3D(named: "Scene", bundle: realityKitContentBundle)
@@ -35,6 +48,24 @@ struct ContentView: View {
                 .pickerStyle(.segmented)
                 .padding(.horizontal)
                 .disabled(appModel.immersiveSpaceState != .closed)
+
+                if appModel.renderingMode == .panoramaSphere {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Picker("渲染后端", selection: renderBackendBinding) {
+                            ForEach(RenderBackendMode.allCases) { mode in
+                                Text(mode.title).tag(mode)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .padding(.horizontal)
+                        .disabled(appModel.immersiveSpaceState != .closed)
+
+                        Text("对比实验建议: 手动切换后端后各跑一次，日志会自动输出300帧渲染耗时统计（mean/P95/P99）。")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal)
+                    }
+                }
                 
                 // 3DGS 模式下显示模型选择
                 if appModel.renderingMode == .gaussianSplat {

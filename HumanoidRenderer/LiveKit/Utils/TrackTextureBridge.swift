@@ -9,10 +9,12 @@ import Foundation
 import LiveKit
 import CoreImage
 import CoreVideo
+import CoreGraphics
 import RealityKit
 import AVFoundation
 import Metal
 import MetalKit
+import VideoToolbox
 internal import Combine
 
 @MainActor
@@ -21,8 +23,17 @@ final class TrackTextureBridge: NSObject, ObservableObject, VideoRenderer {
     var isAdaptiveStreamEnabled: Bool = false
     var adaptiveStreamSize: CGSize = .zero
 
+    private static let renderBackendDefaultsKey = "renderBackendMode"
+    private static let renderSampleTargetCount = 300
+    private static let renderProgressLogStep = 60
+
     // MARK: - Internal state
     private var didLogFirstFrame = false
+    private var didWarnLegacyCaptureUnsupported = false
+    private var renderLatencySamplesMs: [Double] = []
+    private var renderSampleStartAt: Date?
+    private var renderSummaryLogged: Bool = false
+    private let renderBackendMode: RenderBackendMode
     
     // MARK: - RealityKit Stable Resources
     let leftTexture: TextureResource
@@ -36,9 +47,14 @@ final class TrackTextureBridge: NSObject, ObservableObject, VideoRenderer {
     
     private var leftLowLevel: LowLevelTexture
     private var rightLowLevel: LowLevelTexture
+    private let legacyLeftTexture: TextureResource
+    private let legacyRightTexture: TextureResource
     
     // MARK: - Init
     override init() {
+        let backendRaw = UserDefaults.standard.string(forKey: Self.renderBackendDefaultsKey) ?? ""
+        self.renderBackendMode = RenderBackendMode(rawValue: backendRaw) ?? .lowLevelTexture
+
         self.device = MTLCreateSystemDefaultDevice()!
         self.commandQueue = device.makeCommandQueue()!
         
@@ -60,12 +76,34 @@ final class TrackTextureBridge: NSObject, ObservableObject, VideoRenderer {
         )
         self.leftLowLevel = try! LowLevelTexture(descriptor: desc)
         self.rightLowLevel = try! LowLevelTexture(descriptor: desc)
+
+        let lowLevelLeftTexture = try! TextureResource(from: self.leftLowLevel)
+        let lowLevelRightTexture = try! TextureResource(from: self.rightLowLevel)
+
+        let placeholder = Self.makePlaceholderImage(width: 2, height: 2)
+        self.legacyLeftTexture = try! TextureResource(
+            image: placeholder,
+            options: .init(semantic: .color)
+        )
+        self.legacyRightTexture = try! TextureResource(
+            image: placeholder,
+            options: .init(semantic: .color)
+        )
         
-        // 包装为 TextureResource
-        self.leftTexture = try! TextureResource(from: self.leftLowLevel)
-        self.rightTexture = try! TextureResource(from: self.rightLowLevel)
+        switch self.renderBackendMode {
+        case .lowLevelTexture:
+            self.leftTexture = lowLevelLeftTexture
+            self.rightTexture = lowLevelRightTexture
+        case .legacyVideoToolbox:
+            self.leftTexture = self.legacyLeftTexture
+            self.rightTexture = self.legacyRightTexture
+        }
         
         super.init()
+
+        AppLogger.shared.info(
+            "[RenderTest] 当前后端: \(renderBackendMode.title)，自动采样\(Self.renderSampleTargetCount)帧渲染时延"
+        )
     }
     
     private func makeTexture(from pixelBuffer: CVPixelBuffer, planeIndex: Int, pixelFormat: MTLPixelFormat) -> MTLTexture? {
@@ -111,11 +149,27 @@ final class TrackTextureBridge: NSObject, ObservableObject, VideoRenderer {
         captureDevice: AVCaptureDevice?,
         captureOptions: VideoCaptureOptions?
     ) {
+        let renderStartNs = DispatchTime.now().uptimeNanoseconds
+
         // 尝试获取 PixelBuffer
         guard let pixelBuffer = frame.toCVPixelBuffer() else { return }
-        
-        let width = 1920
-        let height = 2160
+
+        if !didLogFirstFrame {
+            didLogFirstFrame = true
+            AppLogger.shared.info(
+                "[RenderTest] 第一帧到达，口径: \(renderBackendMode.latencyBoundaryDescription)"
+            )
+        }
+
+        switch renderBackendMode {
+        case .lowLevelTexture:
+            renderWithLowLevelTexture(pixelBuffer: pixelBuffer, renderStartNs: renderStartNs)
+        case .legacyVideoToolbox:
+            renderWithLegacyVideoToolbox(pixelBuffer: pixelBuffer, renderStartNs: renderStartNs)
+        }
+    }
+
+    private func renderWithLowLevelTexture(pixelBuffer: CVPixelBuffer, renderStartNs: UInt64) {
         
         // 映射 Y 和 UV 纹理
         guard let yTexture = makeTexture(from: pixelBuffer, planeIndex: 0, pixelFormat: .r8Unorm),
@@ -153,13 +207,145 @@ final class TrackTextureBridge: NSObject, ObservableObject, VideoRenderer {
             dispatch(encoder: encoder, targetTexture: rightLowLevel.read())
             encoder.endEncoding()
         }
+
+        let startNs = renderStartNs
+        commandBuffer.addCompletedHandler { [weak self] _ in
+            let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds - startNs) / 1_000_000.0
+            Task { @MainActor in
+                self?.recordRenderLatency(ms: elapsedMs)
+            }
+        }
         
         // 提交指令，GPU开始工作
         commandBuffer.commit()
     }
+
+    private func renderWithLegacyVideoToolbox(pixelBuffer: CVPixelBuffer, renderStartNs: UInt64) {
+        var cgImage: CGImage?
+        let status = VTCreateCGImageFromCVPixelBuffer(pixelBuffer, options: nil, imageOut: &cgImage)
+        guard status == noErr, let fullImage = cgImage else {
+            return
+        }
+
+        let width = fullImage.width
+        let height = fullImage.height
+        let halfHeight = height / 2
+        guard halfHeight > 0,
+              let leftCG = fullImage.cropping(to: CGRect(x: 0, y: 0, width: width, height: halfHeight)),
+              let rightCG = fullImage.cropping(to: CGRect(x: 0, y: halfHeight, width: width, height: halfHeight)) else {
+            return
+        }
+
+        do {
+            try legacyLeftTexture.replace(withImage: leftCG, options: .init(semantic: .color))
+            try legacyRightTexture.replace(withImage: rightCG, options: .init(semantic: .color))
+
+            let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds - renderStartNs) / 1_000_000.0
+            recordRenderLatency(ms: elapsedMs)
+        } catch {
+            AppLogger.shared.warn("[RenderTest] Legacy纹理更新失败: \(error.localizedDescription)")
+        }
+    }
+
+    private func recordRenderLatency(ms: Double) {
+        guard ms.isFinite, ms >= 0 else { return }
+        guard renderLatencySamplesMs.count < Self.renderSampleTargetCount else { return }
+
+        if renderSampleStartAt == nil {
+            renderSampleStartAt = Date()
+        }
+
+        renderLatencySamplesMs.append(ms)
+        let count = renderLatencySamplesMs.count
+
+        if count == 1 || count % Self.renderProgressLogStep == 0 {
+            let meanVal = Self.mean(renderLatencySamplesMs) ?? ms
+            let p95Val = Self.percentile(renderLatencySamplesMs, p: 0.95) ?? ms
+            AppLogger.shared.perf(
+                String(
+                    format: "[RenderTest][%@] progress %d/%d | mean=%.2fms P95=%.2fms",
+                    renderBackendMode.title,
+                    count,
+                    Self.renderSampleTargetCount,
+                    meanVal,
+                    p95Val
+                )
+            )
+        }
+
+        if count == Self.renderSampleTargetCount && !renderSummaryLogged {
+            renderSummaryLogged = true
+            AppLogger.shared.perf(makeRenderSummary())
+        }
+    }
+
+    private func makeRenderSummary() -> String {
+        let samples = renderLatencySamplesMs
+        let count = samples.count
+        let meanVal = Self.mean(samples) ?? 0.0
+        let p95Val = Self.percentile(samples, p: 0.95) ?? meanVal
+        let p99Val = Self.percentile(samples, p: 0.99) ?? p95Val
+        let minVal = samples.min() ?? meanVal
+        let maxVal = samples.max() ?? meanVal
+        let wallSec = renderSampleStartAt.map { Date().timeIntervalSince($0) } ?? 0.0
+
+        return String(
+            format: "[RenderTest][%@] DONE N=%d | mean=%.2fms P95=%.2fms P99=%.2fms min=%.2fms max=%.2fms wall=%.1fs",
+            renderBackendMode.title,
+            count,
+            meanVal,
+            p95Val,
+            p99Val,
+            minVal,
+            maxVal,
+            wallSec
+        )
+    }
+
+    private static func mean(_ values: [Double]) -> Double? {
+        guard !values.isEmpty else { return nil }
+        return values.reduce(0.0, +) / Double(values.count)
+    }
+
+    private static func percentile(_ values: [Double], p: Double) -> Double? {
+        guard !values.isEmpty else { return nil }
+        let sorted = values.sorted()
+        let clamped = min(max(p, 0.0), 1.0)
+        let idx = min(sorted.count - 1, Int((Double(sorted.count - 1) * clamped).rounded()))
+        return sorted[idx]
+    }
+
+    private static func makePlaceholderImage(width: Int, height: Int) -> CGImage {
+        let bytesPerRow = width * 4
+        let data = Data(repeating: 0, count: bytesPerRow * height)
+        let provider = CGDataProvider(data: data as CFData)!
+        let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue)
+
+        return CGImage(
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bitsPerPixel: 32,
+            bytesPerRow: bytesPerRow,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: bitmapInfo,
+            provider: provider,
+            decode: nil,
+            shouldInterpolate: false,
+            intent: .defaultIntent
+        )!
+    }
     
     // 抓取当前左眼画面的静态副本
     func captureLatestFrame() -> MTLTexture? {
+        guard renderBackendMode == .lowLevelTexture else {
+            if !didWarnLegacyCaptureUnsupported {
+                didWarnLegacyCaptureUnsupported = true
+                AppLogger.shared.warn("[RenderTest] Legacy后端暂不支持captureLatestFrame")
+            }
+            return nil
+        }
+
         // 获取当前正在被写入的底层纹理
         let sourceTexture = self.leftLowLevel.read()
         
