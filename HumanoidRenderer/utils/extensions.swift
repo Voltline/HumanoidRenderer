@@ -6,6 +6,7 @@
 //
 
 import simd
+import CompositorServices
 
 extension simd_quatf {
     /// 返回 (pitch, yaw, roll) 的欧拉角（弧度）
@@ -32,5 +33,13 @@ extension simd_quatf {
         let roll = atan2(sinr, cosr)
 
         return SIMD3<Float>(pitch, yaw, roll)
+    }
+}
+
+// MARK: - LayerRenderer.Clock 扩展
+extension LayerRenderer.Clock.Instant.Duration {
+    var timeInterval: TimeInterval {
+        let nanoseconds = TimeInterval(components.attoseconds / 1_000_000_000)
+        return TimeInterval(components.seconds) + (nanoseconds / TimeInterval(NSEC_PER_SEC))
     }
 }

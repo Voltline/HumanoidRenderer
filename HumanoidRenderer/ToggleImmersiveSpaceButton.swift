@@ -42,16 +42,12 @@ struct ToggleImmersiveSpaceButton: View {
                                 break
 
                             case .userCancelled, .error:
-                                // On error, we need to mark the immersive space
-                                // as closed because it failed to open.
                                 fallthrough
                             @unknown default:
-                                // On unknown response, assume space did not open.
                                 appModel.immersiveSpaceState = .closed
                         }
 
                     case .inTransition:
-                        // This case should not ever happen because button is disabled for this case.
                         break
                 }
             }

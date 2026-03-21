@@ -38,14 +38,14 @@ final class GaussianSplatVideoBridge: NSObject, @unchecked Sendable, VideoRender
     // 是否已经收到过至少一帧
     private(set) var hasTexture: Bool = false
     
-    /// 获取当前左眼 RGBA 纹理 (线程安全)
+    /// 获取当前左眼 RGBA 纹理
     var currentTexture: MTLTexture? {
         lock.lock()
         defer { lock.unlock() }
         return _leftTexture
     }
     
-    /// 获取当前右眼 RGBA 纹理 (线程安全)
+    /// 获取当前右眼 RGBA 纹理
     var rightTexture: MTLTexture? {
         lock.lock()
         defer { lock.unlock() }
@@ -157,7 +157,7 @@ final class GaussianSplatVideoBridge: NSObject, @unchecked Sendable, VideoRender
             return
         }
         
-        // 处理左眼 (上半)
+        // 处理左眼
         if let encoder = commandBuffer.makeComputeCommandEncoder() {
             encoder.setComputePipelineState(pipelineState)
             encoder.setTexture(yTexture, index: 0)
@@ -169,7 +169,7 @@ final class GaussianSplatVideoBridge: NSObject, @unchecked Sendable, VideoRender
             encoder.endEncoding()
         }
         
-        // 处理右眼 (下半)
+        // 处理右眼
         if let encoder = commandBuffer.makeComputeCommandEncoder() {
             encoder.setComputePipelineState(pipelineState)
             encoder.setTexture(yTexture, index: 0)
@@ -181,7 +181,6 @@ final class GaussianSplatVideoBridge: NSObject, @unchecked Sendable, VideoRender
             encoder.endEncoding()
         }
         
-        // 背压: command buffer 完成后释放信号量 + flush 纹理缓存
         let semaphore = frameSemaphore
         let cache = textureCache
         commandBuffer.addCompletedHandler { _ in

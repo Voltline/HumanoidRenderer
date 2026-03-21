@@ -27,6 +27,5 @@ struct LiveKitVideoView: UIViewRepresentable {
     }
 
     static func dismantleUIView(_ uiView: VideoView, coordinator: ()) {
-        // 注意：这里无法直接拿到 track；解绑在 update 里已做，测试阶段够用
     }
 }

@@ -26,7 +26,7 @@ final class LiveKitViewModel: ObservableObject {
     }
 
     func connect(serverIP: String) {
-        statusText = "Connecting…"
+        statusText = "Connecting"
         room.add(delegate: self)
 
         Task {

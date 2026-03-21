@@ -16,7 +16,6 @@ struct ImmersiveView: View {
     @Environment(AppModel.self) private var appModel: AppModel
     
     @StateObject private var bridge = TrackTextureBridge()
-    // MARK: - 统一后的组件
     @State private var gimbalClient: GimbalClient?
     
     // MARK: - 背景资源
@@ -32,7 +31,6 @@ struct ImmersiveView: View {
     
     var body: some View {
         RealityView { content in
-            // MARK: 设置背景阵列
             let backgroundRoot = Entity()
             backgroundRoot.name = "BackgroundRoot"
             content.add(backgroundRoot)
@@ -71,14 +69,14 @@ struct ImmersiveView: View {
     // MARK: - 自动化全流程
     func startAutomatedWorkflow() async {
         do {
-            // 第一步 云台复位
+            // 云台复位
             appModel.phase = .initializing
-            AppLogger.shared.info("[全景球] 云台复位中...")
+            AppLogger.shared.info("[全景球] 云台复位中")
             try await gimbalClient?.initGimbal()
             
-            // 第二步 请求服务端扫描
+            // 请求服务端扫描
             appModel.phase = .scanning
-            AppLogger.shared.info("[全景球] 请求服务端扫描全景图集...")
+            AppLogger.shared.info("[全景球] 请求服务端扫描全景图集")
             
             guard let panoData = try await gimbalClient?.fetchPanorama() else {
                 AppLogger.shared.error("[全景球] 获取全景图失败")
@@ -86,20 +84,20 @@ struct ImmersiveView: View {
             }
             AppLogger.shared.info("[全景球] 全景图下载完成 (\(panoData.count / 1024) KB)")
             
-            // 第三步 切片并应用纹理
+            // 切片并应用纹理
             appModel.phase = .baking
-            AppLogger.shared.info("[全景球] 正在烘焙纹理...")
+            AppLogger.shared.info("[全景球] 正在烘焙纹理")
             
             await MainActor.run {
                 BackgroundManager.updatePanorama(imageData: panoData)
             }
             
-            // 第四步 云台归位
+            // 云台归位
             appModel.phase = .ready
-            AppLogger.shared.info("[全景球] 云台归位...")
+            AppLogger.shared.info("[全景球] 云台归位")
             try await gimbalClient?.initGimbal()
             
-            // 第五步 开始实时跟随
+            // 开始实时跟随
             self.hasBaseline = false
             appModel.phase = .live
             await HeadTracker.shared.startTracking()
@@ -117,7 +115,7 @@ struct ImmersiveView: View {
             let quat = simd_quatf(transform)
             let euler = quat.toEulerAngles()
             
-            // 1. 初次基准建立
+            // 基准建立
             if !hasBaseline {
                 self.lastYaw = euler.y
                 self.lastPitch = euler.x
@@ -128,16 +126,16 @@ struct ImmersiveView: View {
             let deltaYaw = euler.y - self.lastYaw
             let deltaPitch = euler.x - self.lastPitch
             
-            // 2. 突变过滤：如果单帧跳变超过 45度(0.78rad)，判定为 ARKit 坐标修正
+            // 突变过滤：如果单帧跳变超过 45度(0.78rad)，判定为 ARKit 坐标修正
             // 此时只更新基准，不向服务端发送指令
             if abs(deltaYaw) > 0.78 || abs(deltaPitch) > 0.78 {
-                print("[Sensor] Mutation detected, re-baselining...")
+                AppLogger.shared.info("[Sensor] Mutation detected, re-baselining...")
                 self.lastYaw = euler.y
                 self.lastPitch = euler.x
                 return
             }
             
-            // 3. 正常发送增量
+            // 正常发送增量
             self.lastYaw = euler.y
             self.lastPitch = euler.x
             
@@ -151,7 +149,7 @@ struct ImmersiveView: View {
         let headAnchor = AnchorEntity(.head)
         headAnchor.name = "headAnchor"
 
-        // 视频平面放置在 3m 处，角张角 ~65°H × 39°V (舒适观影距离)
+        // 视频平面放置在 3m 处，角张角 ~65°H × 39°V
         // half_w = 3.0 * tan(32.5°) ≈ 1.911,  half_h = half_w * 9/16 ≈ 1.075
         // width  = 3.822,  height = 2.150
         let planeMesh = MeshResource.generatePlane(width: 3.822, height: 2.150)
@@ -192,13 +190,13 @@ struct ImmersiveView: View {
                             patch.model = model
                         }
                         self.stereoMaterial = finalMat
-                        print("[RealityKit] ShaderGraphMaterial bound to LowLevelTexture.")
+                        AppLogger.shared.info("[RealityKit] ShaderGraphMaterial bound to LowLevelTexture.")
                     } catch {
-                        print("[Error] Parameter binding failed: \(error)")
+                        AppLogger.shared.error("[RealityKit] Parameter binding failed: \(error)")
                     }
                 }
             } catch {
-                print("[Error] Failed to load ShaderGraphMaterial: \(error)")
+                AppLogger.shared.error("[RealityKit] Failed to load ShaderGraphMaterial: \(error)")
             }
         }
     }
@@ -210,11 +208,11 @@ struct ImmersiveView: View {
         if boundTrack !== newTrack {
             if let old = boundTrack {
                 old.remove(videoRenderer: bridge)
-                print("[LiveKit] Old track removed from bridge.")
+                AppLogger.shared.info("[LiveKit] Old track removed from bridge.")
             }
             if let t = newTrack {
                 t.add(videoRenderer: bridge)
-                print("[LiveKit] New track added to bridge.")
+                AppLogger.shared.info("[LiveKit] New track added to bridge.")
             }
             // 确保在主线程更新状态
             Task { @MainActor in

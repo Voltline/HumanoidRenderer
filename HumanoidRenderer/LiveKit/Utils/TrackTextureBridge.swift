@@ -114,9 +114,6 @@ final class TrackTextureBridge: NSObject, ObservableObject, VideoRenderer {
         // 尝试获取 PixelBuffer
         guard let pixelBuffer = frame.toCVPixelBuffer() else { return }
         
-        let width = 1920
-        let height = 2160
-        
         // 映射 Y 和 UV 纹理
         guard let yTexture = makeTexture(from: pixelBuffer, planeIndex: 0, pixelFormat: .r8Unorm),
               let uvTexture = makeTexture(from: pixelBuffer, planeIndex: 1, pixelFormat: .rg8Unorm) else {
@@ -156,36 +153,5 @@ final class TrackTextureBridge: NSObject, ObservableObject, VideoRenderer {
         
         // 提交指令，GPU开始工作
         commandBuffer.commit()
-    }
-    
-    // 抓取当前左眼画面的静态副本
-    func captureLatestFrame() -> MTLTexture? {
-        // 获取当前正在被写入的底层纹理
-        let sourceTexture = self.leftLowLevel.read()
-        
-        // 创建一个新的纹理描述
-        let descriptior = MTLTextureDescriptor.texture2DDescriptor(
-            pixelFormat: sourceTexture.pixelFormat,
-            width: sourceTexture.width,
-            height: sourceTexture.height,
-            mipmapped: false
-        )
-        descriptior.usage = [.shaderRead, .shaderWrite]
-        descriptior.storageMode = .private
-        
-        guard let destinationTexture = device.makeTexture(descriptor: descriptior),
-              let commandBuffer = commandQueue.makeCommandBuffer(),
-              let blitEncoder = commandBuffer.makeBlitCommandEncoder() else {
-            return nil
-        }
-        
-        // 执行GPU拷贝
-        blitEncoder.copy(from: sourceTexture, to: destinationTexture)
-        blitEncoder.endEncoding()
-        
-        commandBuffer.commit()
-        commandBuffer.waitUntilCompleted() // 同步等待拷贝完成
-        
-        return destinationTexture
     }
 }

@@ -132,12 +132,12 @@ final class GaussianSplatRenderer: @unchecked Sendable {
         let model = await appModel.splatModel.apiValue
         
         do {
-            // 阶段 1: 云台复位
+            // 云台复位
             await MainActor.run { appModel.phase = .initializing }
             AppLogger.shared.info("[3DGS] 云台复位中...")
             try await client.initGimbal()
             
-            // 阶段 2: 触发扫描 + 等待提交 (复用 scanning 状态)
+            // 触发扫描 + 等待提交 (复用 scanning 状态)
             await MainActor.run { appModel.phase = .scanning }
             AppLogger.shared.info("[3DGS] 触发 4 帧扫描任务 (model=\(model))...")
             let jobId = try await client.startGaussianSplatGeneration(model: model)
@@ -170,7 +170,7 @@ final class GaussianSplatRenderer: @unchecked Sendable {
             
             guard let opId = operationId else { return }
             
-            // 阶段 3: 轮询 World Labs 生成进度 (复用 baking 状态)
+            // 轮询 World Labs 生成进度
             await MainActor.run {
                 appModel.phase = .baking
                 appModel.generationProgress = "等待 World Labs 生成..."
@@ -200,7 +200,7 @@ final class GaussianSplatRenderer: @unchecked Sendable {
                 return
             }
             
-            // 阶段 4: 下载 SPZ + 加载渲染器 (复用 ready 状态)
+            // 下载 SPZ + 加载渲染器
             await MainActor.run {
                 appModel.phase = .ready
                 appModel.generationProgress = ""
@@ -221,7 +221,7 @@ final class GaussianSplatRenderer: @unchecked Sendable {
             let elapsed = CFAbsoluteTimeGetCurrent() - loadStart
             AppLogger.shared.perf("[3DGS] 场景加载完成，耗时 \(String(format: "%.2f", elapsed))s")
             
-            // 阶段 5: 云台归位 → 进入 live
+            // 云台归位 → 进入 live
             AppLogger.shared.info("[3DGS] 云台归位...")
             try await client.initGimbal()
             
@@ -238,7 +238,7 @@ final class GaussianSplatRenderer: @unchecked Sendable {
     
     // MARK: - 加载 3DGS 场景
     func loadSplatScene(url: URL) async throws {
-        Self.log.info("开始加载 3DGS 场景: \(url.lastPathComponent)")
+        AppLogger.shared.info("[3DGS] 开始加载 3DGS 场景: \(url.lastPathComponent)")
         
         var t0 = CFAbsoluteTimeGetCurrent()
         let splat = try SplatRenderer(
@@ -265,19 +265,19 @@ final class GaussianSplatRenderer: @unchecked Sendable {
         AppLogger.shared.perf("[3DGS] addChunk (排序): \(String(format: "%.2f", CFAbsoluteTimeGetCurrent() - t0))s")
         
         self.splatRenderer = splat
-        Self.log.info("3DGS 场景加载完成，共 \(points.count) 个 splat")
+        AppLogger.shared.info("3DGS 场景加载完成，共 \(points.count) 个 splat")
     }
     
     // MARK: - 构建视频 Quad 管线
     private func buildVideoQuadPipeline() {
         guard let library = device.makeDefaultLibrary() else {
-            Self.log.error("无法获取默认 Metal 库")
+            AppLogger.shared.error("无法获取默认 Metal 库")
             return
         }
         
         guard let vertexFunc = library.makeFunction(name: "videoQuadVertexShader"),
               let fragmentFunc = library.makeFunction(name: "videoQuadFragmentShader") else {
-            Self.log.error("无法找到视频 Quad 着色器")
+            AppLogger.shared.error("无法找到视频 Quad 着色器")
             return
         }
         
@@ -302,7 +302,7 @@ final class GaussianSplatRenderer: @unchecked Sendable {
         do {
             videoQuadPipelineState = try device.makeRenderPipelineState(descriptor: desc)
         } catch {
-            Self.log.error("构建视频 Quad 管线失败: \(error)")
+            AppLogger.shared.error("构建视频 Quad 管线失败: \(error)")
         }
     }
     
@@ -323,7 +323,6 @@ final class GaussianSplatRenderer: @unchecked Sendable {
         // 避免 Swift Task 的 actor 继承和 executor 偏好不确定性
         let renderQueue = DispatchQueue(label: "GaussianSplatRenderQueue", qos: .userInteractive)
         renderQueue.async { [self] in
-            AppLogger.shared.info("[3DGS] 渲染线程: \(Thread.isMainThread ? "⚠️ 主线程" : "✅ 后台线程")")
             
             // ARKit 会话需要通过 Task 启动（async API）
             let arReady = DispatchSemaphore(value: 0)
@@ -355,7 +354,7 @@ final class GaussianSplatRenderer: @unchecked Sendable {
         while true {
             autoreleasepool {
                 if layerRenderer.state == .invalidated {
-                    Self.log.warning("LayerRenderer 已失效")
+                    AppLogger.shared.warn("LayerRenderer 已失效")
                     return
                 } else if layerRenderer.state == .paused {
                     layerRenderer.waitUntilRunning()
@@ -420,7 +419,7 @@ final class GaussianSplatRenderer: @unchecked Sendable {
             
             let viewports = buildViewports(drawable: drawable, deviceAnchor: deviceAnchor)
             
-            // 第一步：渲染 3DGS 背景
+            // 渲染 3DGS 背景
             do {
                 let msViewports = viewports.map { vp in
                     SplatRenderer.ViewportDescriptor(
@@ -441,10 +440,10 @@ final class GaussianSplatRenderer: @unchecked Sendable {
                     to: commandBuffer
                 )
             } catch {
-                Self.log.error("3DGS 渲染失败: \(error.localizedDescription)")
+                AppLogger.shared.error("3DGS 渲染失败: \(error.localizedDescription)")
             }
             
-            // 第二步：叠加头部锁定的立体视频 Quad
+            // 叠加头部锁定的立体视频 Quad
             if videoBridge.hasTexture, let pipelineState = videoQuadPipelineState {
                 renderVideoQuad(
                     commandBuffer: commandBuffer,
@@ -468,9 +467,8 @@ final class GaussianSplatRenderer: @unchecked Sendable {
     ) -> [SplatViewportDescriptor] {
         let simdDeviceAnchor = deviceAnchor?.originFromAnchorTransform ?? matrix_identity_float4x4
         
-        // 将视点下移到场景内部（大约人眼高度 1.5m）
+        // 将视点下移到场景内部
         // 如果场景原点在地面附近，用户的 ARKit 头部高度 ~1.7m 会导致视角浮在上方
-        // 这个偏移量让 splat 场景整体上移，等效于把用户"放进"房间里
         let sceneOffset = simd_float4x4(
             SIMD4<Float>(1, 0, 0, 0),
             SIMD4<Float>(0, 1, 0, 0),
@@ -522,9 +520,6 @@ final class GaussianSplatRenderer: @unchecked Sendable {
         
         encoder.setRenderPipelineState(pipelineState)
         
-        // Bug Fix #1: 头部锁定
-        // view.transform 是眼睛相对于设备(头)的偏移，不包含 deviceAnchor。
-        // 使用 projection * view.transform.inverse 让 quad 始终在头部前方 z=-2m 处。
         var uniforms = VideoQuadUniforms()
         for (i, view) in drawable.views.prefix(2).enumerated() {
             let eyeViewMatrix = view.transform.inverse
@@ -536,7 +531,6 @@ final class GaussianSplatRenderer: @unchecked Sendable {
         
         encoder.setVertexBytes(&uniforms, length: MemoryLayout<VideoQuadUniforms>.size, index: 0)
         
-        // Bug Fix #2: 左右眼分别绑定对应纹理
         if let leftTex = videoBridge.currentTexture {
             encoder.setFragmentTexture(leftTex, index: 0)
         }
@@ -570,7 +564,7 @@ final class GaussianSplatRenderer: @unchecked Sendable {
         }
     }
     
-    // MARK: - 独立头部追踪循环 (20Hz)
+    // MARK: - 头部追踪循环 (20Hz)
     private func startHeadTrackingLoop() {
         headTrackingTask = Task.detached(priority: .userInitiated) { [weak self] in
             while !Task.isCancelled {
@@ -615,17 +609,13 @@ final class GaussianSplatRenderer: @unchecked Sendable {
     
     // MARK: - 资源清理 (渲染循环退出时调用)
     private func cleanup() {
-        Self.log.info("开始清理 GaussianSplatRenderer 资源")
         AppLogger.shared.info("[3DGS] 开始资源清理")
         
-        // 1. 停止头部追踪循环
         headTrackingTask?.cancel()
         headTrackingTask = nil
-        
-        // 2. 解绑视频轨道
         bindVideoTrack(nil)
         
-        // 3. 等待所有 in-flight command buffer 完成
+        // 等待所有command buffer完成
         for _ in 0..<Self.maxSimultaneousRenders {
             inFlightSemaphore.wait()
         }
@@ -634,28 +624,19 @@ final class GaussianSplatRenderer: @unchecked Sendable {
             inFlightSemaphore.signal()
         }
         
-        // 4. 清理 videoBridge GPU 资源
+        // 清理 videoBridge GPU 资源
         videoBridge.cleanup()
         
-        // 5. 释放 3DGS 渲染器 (释放大量 GPU 缓冲区)
+        // 释放 3DGS 渲染器
         splatRenderer = nil
         
-        // 6. 停止 ARKit 会话
+        // 停止 ARKit 会话
         arSession.stop()
         
-        // 7. 清除引用
+        // 清除引用
         gimbalClient = nil
         appModel = nil
         
-        Self.log.info("GaussianSplatRenderer 资源清理完成")
         AppLogger.shared.info("[3DGS] 资源清理完成")
-    }
-}
-
-// MARK: - LayerRenderer.Clock 扩展
-extension LayerRenderer.Clock.Instant.Duration {
-    var timeInterval: TimeInterval {
-        let nanoseconds = TimeInterval(components.attoseconds / 1_000_000_000)
-        return TimeInterval(components.seconds) + (nanoseconds / TimeInterval(NSEC_PER_SEC))
     }
 }
