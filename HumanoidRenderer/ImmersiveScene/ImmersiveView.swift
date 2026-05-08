@@ -184,6 +184,7 @@ struct ImmersiveView: View {
                         // 核心：将 bridge 里的 LowLevelTexture 引用绑定到 ShaderGraph 的输入口
                         try finalMat.setParameter(name: "LeftImage", value: .textureResource(bridge.leftTexture))
                         try finalMat.setParameter(name: "RightImage", value: .textureResource(bridge.rightTexture))
+                        try finalMat.setParameter(name: "MaskImage", value: .textureResource(bridge.maskTexture))
                         
                         if var model = patch.model {
                             model.materials = [finalMat]

@@ -56,6 +56,7 @@ def Xform "Root"
                 }
             }
         )
+        asset inputs:MaskImage
         token outputs:mtlx:surface.connect = </Root/StereoVideoMaterial/UnlitSurface.outputs:out>
         token outputs:realitykit:vertex
         float2 ui:nodegraph:realitykit:subgraphOutputs:pos = (647.47266, 102.671875)
@@ -99,13 +100,23 @@ def Xform "Root"
             string[] ui:nodegraph:realitykit:node:attributesShowingChildren = ["inputs:file"]
         }
 
+        def Shader "Mask"
+        {
+            uniform token info:id = "ND_image_float"
+            float inputs:default
+            asset inputs:file.connect = </Root/StereoVideoMaterial.inputs:MaskImage>
+            string inputs:filtertype
+            float2 inputs:texcoord
+            float outputs:out
+        }
+
         def Shader "UnlitSurface"
         {
             uniform token info:id = "ND_realitykit_unlit_surfaceshader"
             bool inputs:applyPostProcessToneMap
             color3f inputs:color.connect = </Root/StereoVideoMaterial/Combine.outputs:out>
             bool inputs:hasPremultipliedAlpha
-            float inputs:opacity
+            float inputs:opacity.connect = </Root/StereoVideoMaterial/Mask.outputs:out>
             float inputs:opacityThreshold
             token outputs:out
             float2 ui:nodegraph:node:pos = (421.53516, 117.5)
@@ -123,4 +134,3 @@ def Xform "Root"
         }
     }
 }
-

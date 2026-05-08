@@ -27,6 +27,7 @@ final class TrackTextureBridge: NSObject, ObservableObject, VideoRenderer {
     // MARK: - RealityKit Stable Resources
     let leftTexture: TextureResource
     let rightTexture: TextureResource
+    let maskTexture: TextureResource
     
     // MARK: - Metal & LowLevelTexture
     private let device: MTLDevice
@@ -36,6 +37,7 @@ final class TrackTextureBridge: NSObject, ObservableObject, VideoRenderer {
     
     private var leftLowLevel: LowLevelTexture
     private var rightLowLevel: LowLevelTexture
+    private var maskLowLevel: LowLevelTexture
     
     // MARK: - Init
     override init() {
@@ -44,7 +46,7 @@ final class TrackTextureBridge: NSObject, ObservableObject, VideoRenderer {
         
         // 加载 Metal Shader
         let library = device.makeDefaultLibrary()!
-        let function = library.makeFunction(name: "nvl2ToRgba")!
+        let function = library.makeFunction(name: "nvl2ToRgbaAndMask")!
         self.pipelineState = try! device.makeComputePipelineState(function: function)
         
         // 创建纹理缓存
@@ -60,10 +62,19 @@ final class TrackTextureBridge: NSObject, ObservableObject, VideoRenderer {
         )
         self.leftLowLevel = try! LowLevelTexture(descriptor: desc)
         self.rightLowLevel = try! LowLevelTexture(descriptor: desc)
+        let maskDesc = LowLevelTexture.Descriptor(
+            textureType: .type2D,
+            pixelFormat: .rgba8Unorm,
+            width: 1920,
+            height: 1080,
+            textureUsage: [.shaderRead, .shaderWrite]
+        )
+        self.maskLowLevel = try! LowLevelTexture(descriptor: maskDesc)
         
         // 包装为 TextureResource
         self.leftTexture = try! TextureResource(from: self.leftLowLevel)
         self.rightTexture = try! TextureResource(from: self.rightLowLevel)
+        self.maskTexture = try! TextureResource(from: self.maskLowLevel)
         
         super.init()
     }
@@ -129,10 +140,11 @@ final class TrackTextureBridge: NSObject, ObservableObject, VideoRenderer {
             encoder.setTexture(yTexture, index: 0)
             encoder.setTexture(uvTexture, index: 1)
             encoder.setTexture(leftLowLevel.read(), index: 2) // 写入左眼
+            encoder.setTexture(maskLowLevel.read(), index: 3)
             
             // 传入归一化偏移量
             var normOffset: Float = 0.0
-            encoder.setBytes(&normOffset, length: MemoryLayout<UInt32>.size, index: 0)
+            encoder.setBytes(&normOffset, length: MemoryLayout<Float>.size, index: 0)
             
             dispatch(encoder: encoder, targetTexture: leftLowLevel.read())
             encoder.endEncoding()
@@ -144,8 +156,9 @@ final class TrackTextureBridge: NSObject, ObservableObject, VideoRenderer {
             encoder.setTexture(yTexture, index: 0)
             encoder.setTexture(uvTexture, index: 1)
             encoder.setTexture(rightLowLevel.read(), index: 2) // 写入右眼
+            encoder.setTexture(maskLowLevel.read(), index: 3)
             var normOffset: Float = 0.5
-            encoder.setBytes(&normOffset, length: MemoryLayout<UInt32>.size, index: 0)
+            encoder.setBytes(&normOffset, length: MemoryLayout<Float>.size, index: 0)
             
             dispatch(encoder: encoder, targetTexture: rightLowLevel.read())
             encoder.endEncoding()

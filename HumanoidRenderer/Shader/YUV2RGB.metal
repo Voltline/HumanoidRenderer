@@ -11,6 +11,7 @@ using namespace metal;
 // MARK: - 常量定义
 // 双线性过滤采样器，边缘模式为 Clamp to Edge
 constexpr sampler bilinearSampler(address::clamp_to_edge, filter::linear);
+constant float kSoftEdgeWidth = 0.085f;
 
 // BT.709 Limited Range -> Full Range RGB 转换矩阵
 constant float3x3 kBT709LimitedToFullMatrix = float3x3(
@@ -26,25 +27,20 @@ constant float3x3 kBT601LimitedToFullMatrix = float3x3(
     float3(1.596f, -0.813f,  0.000f)
 );
 
-// MARK: - 核函数
-// nvl2ToRgba: kernel function for yuv->rgba
-kernel
-void
-nvl2ToRgba(
-           texture2d<float, access::sample> yTexture [[texture(0)]],
-           texture2d<float, access::sample> uvTexture [[texture(1)]],
-           texture2d<float, access::write> rgbaTexture [[texture(2)]],
-           constant float &yNormalizedOffset [[buffer(0)]],
-           uint2 gid [[thread_position_in_grid]])
-{
-    if (gid.x >= rgbaTexture.get_width() || gid.y >= rgbaTexture.get_height()) {
-        return;
-    }
-    
-    // 计算归一化坐标
-    float2 targetUV = float2(gid) / float2(rgbaTexture.get_width(), rgbaTexture.get_height());
-    
-    // 处理上下两部分的纹理
+static inline float softEdgeAlpha(float2 targetUV) {
+    float edgeDistance = min(
+        min(targetUV.x, 1.0f - targetUV.x),
+        min(targetUV.y, 1.0f - targetUV.y)
+    );
+    return smoothstep(0.0f, kSoftEdgeWidth, edgeDistance);
+}
+
+static inline float3 sampleStereoRGB(
+    texture2d<float, access::sample> yTexture,
+    texture2d<float, access::sample> uvTexture,
+    float2 targetUV,
+    float yNormalizedOffset
+) {
     float2 sourceUV = float2(targetUV.x, targetUV.y * 0.5f + yNormalizedOffset);
     
     // 采样 YUV 数据
@@ -63,6 +59,49 @@ nvl2ToRgba(
     // 进行 Gamma 校正
     rgb = max(rgb, 0.0f); // 避免出现负值
     rgb = pow(rgb, 1.4f);
+    return rgb;
+}
+
+// MARK: - 核函数
+// nvl2ToRgba: kernel function for yuv->rgba
+kernel
+void
+nvl2ToRgba(
+           texture2d<float, access::sample> yTexture [[texture(0)]],
+           texture2d<float, access::sample> uvTexture [[texture(1)]],
+           texture2d<float, access::write> rgbaTexture [[texture(2)]],
+           constant float &yNormalizedOffset [[buffer(0)]],
+           uint2 gid [[thread_position_in_grid]])
+{
+    if (gid.x >= rgbaTexture.get_width() || gid.y >= rgbaTexture.get_height()) {
+        return;
+    }
+
+    float2 targetUV = float2(gid) / float2(rgbaTexture.get_width(), rgbaTexture.get_height());
+    float3 rgb = sampleStereoRGB(yTexture, uvTexture, targetUV, yNormalizedOffset);
+    float edgeAlpha = softEdgeAlpha(targetUV);
     
-    rgbaTexture.write(float4(rgb, 1.0f), gid);
+    rgbaTexture.write(float4(rgb, edgeAlpha), gid);
+}
+
+kernel
+void
+nvl2ToRgbaAndMask(
+                  texture2d<float, access::sample> yTexture [[texture(0)]],
+                  texture2d<float, access::sample> uvTexture [[texture(1)]],
+                  texture2d<float, access::write> rgbaTexture [[texture(2)]],
+                  texture2d<float, access::write> maskTexture [[texture(3)]],
+                  constant float &yNormalizedOffset [[buffer(0)]],
+                  uint2 gid [[thread_position_in_grid]])
+{
+    if (gid.x >= rgbaTexture.get_width() || gid.y >= rgbaTexture.get_height()) {
+        return;
+    }
+
+    float2 targetUV = float2(gid) / float2(rgbaTexture.get_width(), rgbaTexture.get_height());
+    float3 rgb = sampleStereoRGB(yTexture, uvTexture, targetUV, yNormalizedOffset);
+    float edgeAlpha = softEdgeAlpha(targetUV);
+
+    rgbaTexture.write(float4(rgb, edgeAlpha), gid);
+    maskTexture.write(float4(edgeAlpha, edgeAlpha, edgeAlpha, 1.0f), gid);
 }
