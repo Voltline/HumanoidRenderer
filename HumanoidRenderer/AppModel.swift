@@ -7,8 +7,6 @@
 
 import SwiftUI
 import LiveKit
-internal import Combine
-import RealityKit
 
 enum SystemPhase {
     case idle           // 初始状态
@@ -53,7 +51,6 @@ class AppModel {
     var remoteVideoTrack: VideoTrack?
     var phase: SystemPhase = .idle
     var scanProgress: Float = 0.0
-    var bakedTextureResource: TextureResource?  // 存放烘焙后的材质
     var splatModel: SplatModel = .plus  // 3DGS 生成模型
     var generationProgress: String = ""  // 3DGS 生成进度文案
     

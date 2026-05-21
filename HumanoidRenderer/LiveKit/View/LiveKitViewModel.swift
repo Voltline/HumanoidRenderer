@@ -15,7 +15,6 @@ private let ROOM = "my-room"
 
 @MainActor
 final class LiveKitViewModel: ObservableObject {
-    @Published var statusText: String = "Idle"
     @Published var remoteVideoTrack: VideoTrack?
 
     let room = Room()
@@ -26,7 +25,6 @@ final class LiveKitViewModel: ObservableObject {
     }
 
     func connect(serverIP: String) {
-        statusText = "Connecting"
         room.add(delegate: self)
 
         Task {
@@ -34,9 +32,7 @@ final class LiveKitViewModel: ObservableObject {
                 // 生成此次访问用到的JWT
                 let token = try LiveKitToken.make(apiKey: API_KEY, apiSecret: API_SECRET, room: ROOM, identity: "vision-pro-viewer", name: "vision-pro-viewer", ttlSeconds: 24 * 60 * 60)
                 try await room.connect(url: "ws://\(serverIP):7880", token: token)
-                statusText = "Connected. Waiting for remote video…"
             } catch {
-                statusText = "Connect failed: \(error)"
             }
         }
     }
@@ -44,7 +40,6 @@ final class LiveKitViewModel: ObservableObject {
     func disconnect() {
         Task { await room.disconnect() }
         remoteVideoTrack = nil
-        statusText = "Disconnected"
     }
 }
 
@@ -52,7 +47,6 @@ extension LiveKitViewModel: RoomDelegate {
 
     // v2 常见的发布回调也是 publication 形态
     func room(_ room: Room, participant: RemoteParticipant, didPublishTrack publication: RemoteTrackPublication) {
-        statusText = "Remote published: \(publication.name) (\(publication.kind))"
     }
 
     // 关键：订阅回调用 publication，然后从 publication.track 取真正 Track
@@ -60,7 +54,6 @@ extension LiveKitViewModel: RoomDelegate {
         if let video = publication.track as? VideoTrack {
             Task { @MainActor in
                 remoteVideoTrack = video
-                statusText = "Subscribed video: \(publication.name)"
                 appModel.remoteVideoTrack = video
             }
         }
@@ -72,7 +65,6 @@ extension LiveKitViewModel: RoomDelegate {
            video === current {
             Task { @MainActor in
                 remoteVideoTrack = nil
-                statusText = "Video unsubscribed"
             }
             appModel.remoteVideoTrack = video
         }
@@ -80,6 +72,5 @@ extension LiveKitViewModel: RoomDelegate {
 
     func room(_ room: Room) {
         remoteVideoTrack = nil
-        statusText = "Disconnected"
     }
 }
