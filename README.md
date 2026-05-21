@@ -129,6 +129,7 @@ sequenceDiagram
 ```mermaid
 flowchart LR
 	subgraph Before[早期路径]
+		direction TB
 		A[CVPixelBuffer] --> B[CIImage]
 		B --> C[CGImage]
 		C --> D[TextureResource 更新]
@@ -136,12 +137,15 @@ flowchart LR
 	end
 
 	subgraph After[当前路径]
+		direction TB
 		A2[CVPixelBuffer] --> F[CVMetalTextureCache]
 		F --> G[MTLTexture Y/UV]
 		G --> H[Metal Compute YUV2RGB]
 		H --> I[预分配 RGBA 纹理]
 		I --> E2[渲染]
 	end
+
+	Before ~~~ After
 ```
 
 ## 分支说明
