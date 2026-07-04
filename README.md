@@ -114,7 +114,7 @@ sequenceDiagram
 3. 发送增量控制指令至云台服务。
 
 ## 渲染优化
-根据 git log 的历史版本，早期视频桥接主要依赖 CIImage/CGImage 的 CPU 路径；当前版本已经迁移到 GPU 路径并复用纹理，显著降低了拷贝与分配成本。
+早期视频桥接主要依赖 CIImage/CGImage 的 CPU 路径；当前版本已经迁移到 GPU 路径并复用纹理，显著降低了拷贝与分配成本。
 
 ### 早期实现
 - 在 [HumanoidRenderer/LiveKit/Utils/TrackTextureBridge.swift](HumanoidRenderer/LiveKit/Utils/TrackTextureBridge.swift) 的早期版本中，每帧通过 `CIContext.createCGImage` 将 `CVPixelBuffer` 转为 `CGImage`，再调用 `TextureResource(image:)` 或 `replace(withImage:)` 更新纹理。
